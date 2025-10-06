@@ -8,7 +8,7 @@
         body {
             margin: 0;
             overflow: hidden;
-            background-color: #38b43d; /* 芝生の色 */
+            background-color: #38b43d;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -20,11 +20,10 @@
         canvas {
             display: block;
             border: 5px solid #287a2b;
-            background-color: #5cb85c; /* 明るい地面の色 */
+            background-color: #5cb85c;
             box-shadow: 0 0 20px rgba(0, 0, 0, 0.5) inset;
         }
         #score-board {
-            /* 中央上部配置と文字化け対策 */
             position: absolute;
             top: 20px;
             left: 50%;
@@ -40,7 +39,6 @@
             display: flex;
             gap: 30px;
             white-space: nowrap;
-            /*  初期状態では非表示  */
             opacity: 0; 
             transition: opacity 0.5s;
         }
@@ -98,7 +96,6 @@
         // ゲームの状態
         let score = 0;
         let timeRemaining = TOTAL_TIME;
-        //  初期状態は停止中 
         let gameActive = false; 
         let gameInterval;
         let rings = [];
@@ -106,15 +103,15 @@
         
         let isDragging = false;
         let launchPos = { x: 0, y: 0 }; 
+        let currentMousePos = { x: 0, y: 0 }; // マウス位置を保持する変数
 
-        // UI要素
         const scoreElement = document.getElementById('score');
         const timerElement = document.getElementById('timer');
 
         canvas.width = CANVAS_WIDTH;
         canvas.height = CANVAS_HEIGHT;
 
-        // --- ゲーム要素のクラス定義 (変更なし) ---
+        // --- ゲーム要素のクラス定義 ---
         class Post {
             constructor(x, height) {
                 this.x = x;
@@ -143,19 +140,24 @@
             }
             update() {
                 if (!this.isTossed || this.isScored) return;
+                
                 this.vx *= AIR_DRAG; 
                 this.vy *= AIR_DRAG;
                 this.vy += GRAVITY; 
+
                 this.x += this.vx;
                 this.y += this.vy;
+                
                 if (this.x - this.radius < 0 || this.x + this.radius > CANVAS_WIDTH) {
                     this.vx *= -0.5; 
                     this.x = Math.max(this.radius, Math.min(this.x, CANVAS_WIDTH - this.radius));
                 }
+                
                 if (this.y + this.radius > CANVAS_HEIGHT) {
                     this.y = CANVAS_HEIGHT - this.radius;
                     this.vy *= -0.3; 
                     this.vx *= 0.6; 
+                    
                     if (Math.abs(this.vy) < 0.5 && Math.abs(this.vx) < 0.5) {
                         this.isTossed = false; 
                     }
@@ -174,7 +176,6 @@
         function initializePosts() {
             posts = []; 
             const spacing = CANVAS_WIDTH / (NUM_POSTS + 1); 
-            
             for (let i = 1; i <= NUM_POSTS; i++) {
                 const x = spacing * i;
                 const height = Math.random() * 200 + 100; 
@@ -203,7 +204,6 @@
             }
         }
 
-        //  タイマー更新 
         function updateGame() {
             if (!gameActive) return;
             timeRemaining -= 0.1;
@@ -218,11 +218,9 @@
 
         // --- 投擲イベント ---
         const isLaunchArea = (y) => y > CANVAS_HEIGHT - LAUNCH_AREA_HEIGHT; 
-        let currentMousePos = { x: 0, y: 0 }; 
 
-        //  ゲームアクティブ時のみマウスクリックを有効にする 
         canvas.addEventListener('mousedown', function(event) {
-            if (!gameActive) return; // 停止中はクリックしても反応しない
+            if (!gameActive) return; 
 
             const rect = canvas.getBoundingClientRect();
             const mouseX = event.clientX - rect.left;
@@ -290,25 +288,25 @@
 
         function animate() {
             ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-            //  常に棒は描画する 
             posts.forEach(post => post.draw());
             rings.forEach(ring => {
                 ring.update();
                 ring.draw();
-                //  ゲームアクティブ時のみ判定 
                 if (gameActive) {
                     checkCollisions(ring);
                 }
             });
-            const isAnyRingMoving = rings.some(r => r.isTossed);
-            if (gameActive || isAnyRingMoving || !gameActive) { // 常にアニメーションループを回し、待機画面を描画できるようにする
-                animationFrameId = requestAnimationFrame(animate);
-            } else {
-                animationFrameId = null; 
-            }
             
-            // 待機画面の描画
-            if (!gameActive && timeRemaining === TOTAL_TIME) {
+            const isAnyRingMoving = rings.some(r => r.isTossed);
+            
+            if (gameActive || isAnyRingMoving || timeRemaining === TOTAL_TIME) { // 待機画面を維持
+                animationFrameId = requestAnimationFrame(animate);
+            } else if (timeRemaining === 0) {
+                 // 終了画面でアニメーションを止める（Enter入力待ち）
+                animationFrameId = null;
+            }
+
+            if (!gameActive) {
                 drawStartScreen();
             }
         }
@@ -320,69 +318,15 @@
             ctx.fillStyle = 'white';
             ctx.font = '40px sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText(`Enterキーを押してゲームスタート！`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
-        }
-
-        //  ゲーム開始処理 
-        function startGame() {
-            if (gameActive) return; // 既に開始している場合は何もしない
-
-            score = 0;
-            timeRemaining = TOTAL_TIME;
-            gameActive = true;
-            rings = []; // 待機中の輪をクリア
-            
-            scoreElement.textContent = score;
-            timerElement.textContent = timeRemaining.toFixed(2);
-            scoreBoard.style.opacity = 1; // UIを表示
-            
-            const oldButton = document.getElementById('restart-button');
-            if (oldButton) oldButton.remove();
-
-            clearInterval(gameInterval);
-            gameInterval = setInterval(updateGame, 100); 
-        }
-
-        function endGame() {
-            gameActive = false;
-            clearInterval(gameInterval);
-
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-            
-            ctx.fillStyle = 'white';
-            ctx.font = '40px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText(`時間切れ！最終スコア: ${score}点`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 20);
-            
-            const restartButton = document.createElement('button');
-            restartButton.id = 'restart-button';
-            restartButton.textContent = 'もう一度プレイ (Enterで再開)';
-            restartButton.style.cssText = 'position: absolute; top: 55%; left: 50%; transform: translate(-50%, -50%); padding: 15px 30px; font-size: 24px; cursor: pointer;';
-            // ボタンクリックまたはEnterで再開できるようにする
-            restartButton.onclick = () => {
-                startGame();
-            };
-            document.getElementById('game-container').appendChild(restartButton);
-        }
-
-        //  Enterキーでスタート/再開 
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                if (!gameActive && timeRemaining === TOTAL_TIME) {
-                    // 待機画面からスタート
-                    startGame();
-                } else if (!gameActive && timeRemaining === 0) {
-                    // 終了画面から再スタート
-                    startGame();
-                }
+            // ゲームが始まる前のメッセージ
+            if (timeRemaining === TOTAL_TIME) {
+                ctx.fillText(`Enterキーを押してゲームスタート！`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+            } else if (timeRemaining === 0) {
+                 // 終了後のメッセージ（リスタート待ち）
+                ctx.fillText(`ゲーム終了！最終スコア: ${score}点`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 40);
+                ctx.font = '24px sans-serif';
+                ctx.fillText(`Enterキーで再開`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 20);
             }
-        });
+        }
 
-        // 棒を初期配置し、待機画面でアニメーションを開始
-        initializePosts();
-        animate(); 
-    });
-</script>
-</body>
-</html>
+        //  Enterキーでのスタート/再開
