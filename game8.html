@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>かわいい輪投げゲーム</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            /* 可愛らしい空のようなグラデーション */
+            background: linear-gradient(to bottom, #87CEEB, #ADD8E6); 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        #game-container {
+            position: relative;
+        }
+        canvas {
+            display: block;
+            border: 5px solid #6A5ACD; /* 少し濃い紫系の枠 */
+            /* Canvasの背景も明るい空色 */
+            background: linear-gradient(to bottom, #B0E0E6, #E0FFFF); 
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.2) inset;
+        }
+        #score-board {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 10px 20px;
+            border-radius: 20px; /* 角を丸く */
+            font-family: 'Comic Sans MS', 'Arial Rounded MT Bold', sans-serif; /* かわいいフォント */
+            font-size: 28px; /* 少し大きく */
+            font-weight: bold;
+            color: #FF69B4; /* ピンク色 */
+            z-index: 10;
+            display: flex;
+            gap: 40px; /* 間隔を広げる */
+            white-space: nowrap;
+            opacity: 0; 
+            transition: opacity 0.5s;
+            border: 2px dashed #FFD700; /* 点線でかわいらしく */
+        }
+        #throw-guide {
+            /* バネのガイドラインも可愛らしい色に */
+            position: absolute;
+            width: 0;
+            height: 0;
+            border-bottom: 4px dotted #FFC0CB; /* ドットのピンク線 */
+            transform-origin: 0 0;
+            pointer-events: none;
+            z-index: 20;
+        }
+        /* 雲のスタイル */
+        .cloud {
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            animation: moveCloud linear infinite;
+        }
+        .cloud.small {
+            width: 80px; height: 30px;
+            opacity: 0.7;
+            animation-duration: 40s;
+        }
+        .cloud.medium {
+            width: 120px; height: 45px;
+            opacity: 0.8;
+            animation-duration: 50s;
+        }
+        .cloud.large {
+            width: 180px; height: 70px;
+            opacity: 0.9;
+            animation-duration: 60s;
+        }
+        .cloud::before, .cloud::after {
+            content: '';
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+        }
+        .cloud.small::before { top: -10px; left: 10px; width: 40px; height: 20px; }
+        .cloud.small::after { top: -15px; right: 10px; width: 50px; height: 25px; }
+        .cloud.medium::before { top: -15px; left: 15px; width: 60px; height: 30px; }
+        .cloud.medium::after { top: -20px; right: 15px; width: 70px; height: 35px; }
+        .cloud.large::before { top: -20px; left: 20px; width: 90px; height: 45px; }
+        .cloud.large::after { top: -25px; right: 20px; width: 100px; height: 50px; }
+
+        @keyframes moveCloud {
+            0% { transform: translateX(-100vw); }
+            100% { transform: translateX(200vw); }
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="cloud small" style="top: 10%; left: 0;"></div>
+    <div class="cloud medium" style="top: 25%; left: 30%;"></div>
+    <div class="cloud large" style="top: 15%; left: 60%;"></div>
+    <div class="cloud small" style="top: 35%; left: 80%;"></div>
+
+    <div id="score-board">
+        <div>スコア: <span id="score">0</span> 点</div>
+        <div>残りタイム: <span id="timer">60.00</span> 秒</div>
+    </div>
+    <div id="throw-guide"></div> 
+    <canvas id="ringTossCanvas"></canvas>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const canvas = document.getElementById('ringTossCanvas');
+        const ctx = canvas.getContext('2d');
+        const guideElement = document.getElementById('throw-guide');
+        const scoreBoard = document.getElementById('score-board');
+        
+        // ゲームの定数
+        const CANVAS_WIDTH = 1000;
+        const CANVAS_HEIGHT = 600;
+        const TOTAL_TIME = 60; 
+        const RING_RADIUS = 25;
+        
+        // 物理演算
+        const AIR_DRAG = 0.998; 
+        const GRAVITY = 0.5; 
+        const MAX_THROW_FORCE = 50; 
+        const NUM_POSTS = 10; 
+
+        // 発射位置 (画面上部中央)
+        const LAUNCH_POS_X = CANVAS_WIDTH / 2;
+        const LAUNCH_POS_Y = 100; 
+
+        // 棒のサイズと配置範囲 
+        //  修正点: 棒の幅と高さを調整 
+        const POST_WIDTH = 15; // 少し太く
+        const POST_HEIGHT_MIN = 80; // 最低高さ
+        const POST_HEIGHT_MAX = 150; // 最大高さ
+        const POST_MIN_Y = CANVAS_HEIGHT * 0.3; 
+        const POST_MAX_Y = CANVAS_HEIGHT * 0.9; 
+
+        // ゲームの状態
+        let score = 0;
+        let timeRemaining = TOTAL_TIME;
+        let gameActive = false; 
+        let gameInterval;
+        let rings = [];
+        let posts = [];
+        
+        let isDragging = false;
+        let launchPos = { x: LAUNCH_POS_X, y: LAUNCH_POS_Y }; 
+        let currentMousePos = { x: 0, y: 0 }; 
+
+        const scoreElement = document.getElementById('score');
+        const timerElement = document.getElementById('timer');
+
+        canvas.width = CANVAS_WIDTH;
+        canvas.height = CANVAS_HEIGHT;
+
+        // --- ゲーム要素のクラス定義 ---
+        class Post {
+            constructor(x, y, height) { // heightもコンストラクタで受け取る
+                this.x = x; 
+                this.y = y; 
+                this.width = POST_WIDTH;
+                this.height = height; // ランダムな高さを設定
+                this.scoreValue = 1; 
+                //  修正点: 棒の色をランダムなキャンディ色に 
+                this.color = this.getRandomCandyColor();
+            }
+
+            getRandomCandyColor() {
+                const colors = [
+                    '#FFB6C1', // LightPink
+                    '#FFD700', // Gold
+                    '#87CEEB', // SkyBlue
+                    '#98FB98', // PaleGreen
+                    '#FFDAB9', // PeachPuff
+                    '#BA55D3', // MediumOrchid
+                    '#FF6347'  // Tomato
+                ];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            draw() {
+                //  修正点: キャンディのような見た目に変更 
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x - this.width / 2, this.y, this.width, this.height);
+
+                // 上部にリボン/フリルを追加
+                ctx.fillStyle = 'white'; // リボン色
+                const ribbonHeight = 10;
+                ctx.fillRect(this.x - this.width / 2 - 5, this.y - ribbonHeight / 2, this.width + 10, ribbonHeight);
+                ctx.fillRect(this.x - this.width / 2 - 5, this.y + this.height - ribbonHeight / 2, this.width + 10, ribbonHeight);
+
+                // 細かい縞模様を追加（可愛らしさアップ）
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'; // 半透明白
+                for (let i = 0; i < this.height; i += 10) {
+                    ctx.fillRect(this.
