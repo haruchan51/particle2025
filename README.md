@@ -1,2 +1,162 @@
 # particle2025
 授業で作ったプログラム
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>クリックで花火爆発パーティクル</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000000;
+            cursor: none; /* マウスカーソルを非表示 */
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="particleCanvas"></canvas>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const canvas = document.getElementById('particleCanvas');
+            if (!canvas) return;
+
+            const ctx = canvas.getContext('2d');
+            
+            function setCanvasSize() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+
+            setCanvasSize();
+            window.addEventListener('resize', setCanvasSize);
+
+            const mouse = { x: canvas.width / 2, y: canvas.height / 2 };
+            let isMoving = false; 
+
+            window.addEventListener('mousemove', function(event) {
+                mouse.x = event.clientX;
+                mouse.y = event.clientY;
+                isMoving = true;
+            });
+
+            window.addEventListener('mouseout', function() {
+                isMoving = false;
+            });
+
+            //  マウスクリックイベントを追加 
+            window.addEventListener('click', function(event) {
+                // クリックされた位置で花火爆発パーティクルを生成
+                createFireworkBurst(event.clientX, event.clientY);
+            });
+            
+            // --- パーティクルクラスの定義 ---
+            class Particle {
+                // isFireworkBurstParticle: 花火爆発用パーティクルかどうかのフラグ
+                constructor(x, y, hue, isFireworkBurstParticle = false) {
+                    this.x = x;
+                    this.y = y;
+
+                    if (isFireworkBurstParticle) {
+                        // 花火爆発用パーティクルは、より強い初速で広がる
+                        this.vx = (Math.random() - 0.5) * (Math.random() * 15 + 5); 
+                        this.vy = (Math.random() - 0.5) * (Math.random() * 15 + 5);
+                        this.size = Math.random() * 4 + 2; // サイズも大きめに
+                        this.life = Math.random() * 40 + 30; // 寿命も長めに
+                    } else {
+                        // 通常のマウス追従パーティクル
+                        this.vx = (Math.random() - 0.5) * (Math.random() * 5 + 1); 
+                        this.vy = (Math.random() - 0.5) * (Math.random() * 5 + 1);
+                        this.size = Math.random() * 2 + 1;
+                        this.life = Math.random() * 15 + 10;
+                    }
+                    
+                    this.alpha = 1;
+                    this.color = 'hsl(' + hue + ', 100%, 70%)';
+                }
+
+                update() {
+                    this.x += this.vx;
+                    this.y += this.vy;
+                    
+                    // 摩擦と重力
+                    this.vx *= 0.95; 
+                    this.vy *= 0.95;
+                    this.vy += 0.05; 
+                    
+                    this.alpha -= 1 / this.life;
+                    if (this.alpha < 0) this.alpha = 0;
+                    this.life--;
+                }
+
+                draw() {
+                    ctx.save();
+                    ctx.globalAlpha = this.alpha;
+                    ctx.fillStyle = this.color;
+                    
+                    ctx.shadowBlur = 4;
+                    ctx.shadowColor = this.color;
+                    
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+            }
+            // ------------------------------------------
+
+            const particles = [];
+            const spawnCountTrail = 10; // マウス追従パーティクルの生成数
+
+            //  マウスクリック時の花火爆発を生成する関数 
+            function createFireworkBurst(x, y) {
+                const burstCount = Math.random() * 80 + 50; // 爆発で生成するパーティクルの数
+                const burstHue = Math.random() * 360; 
+
+                for (let i = 0; i < burstCount; i++) {
+                    // isFireworkBurstParticle を true に設定
+                    particles.push(new Particle(x, y, burstHue, true)); 
+                }
+            }
+
+            // --- アニメーションループ ---
+            function animate() {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.1)'; 
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // マウスが動いている間は追従パーティクルを生成
+                if (isMoving) {
+                    const trailHue = Math.random() * 360; // 追従パーティクルもランダムな色相に
+                    for (let i = 0; i < spawnCountTrail; i++) {
+                        particles.push(new Particle(mouse.x, mouse.y, trailHue));
+                    }
+                }
+
+                // パーティクルの更新、描画、削除
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    const p = particles[i];
+                    p.update();
+                    p.draw();
+
+                    if (p.life <= 0 || p.alpha <= 0.05) {
+                        particles.splice(i, 1);
+                    }
+                }
+
+                window.requestAnimationFrame(animate);
+            }
+
+            // 初期表示用
+            // createFireworkBurst(mouse.x, mouse.y); // 必要であれば初期位置で一度爆発
+            animate();
+        });
+    </script>
+</body>
+</html>
