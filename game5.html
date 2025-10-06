@@ -8,7 +8,7 @@
         body {
             margin: 0;
             overflow: hidden;
-            background-color: #004488; /* 濃い青 */
+            background-color: #004488;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -20,7 +20,7 @@
         canvas {
             display: block;
             border: 5px solid #003366;
-            background-color: #0077cc; /* 明るい青 */
+            background-color: #0077cc;
             box-shadow: 0 0 20px rgba(0, 0, 0, 0.5) inset;
         }
         #score-board {
@@ -43,16 +43,14 @@
             transition: opacity 0.5s;
         }
         #throw-guide {
-            /* バネのガイドライン */
             position: absolute;
             width: 0;
             height: 0;
-            border-bottom: 3px solid #ffcc00; /* 太めの黄色い線でバネを表現 */
+            border-bottom: 3px solid #ffcc00;
             transform-origin: 0 0;
             pointer-events: none;
             z-index: 20;
         }
-        /* 発射エリアの半透明の帯は不要になったため削除 */
     </style>
 </head>
 <body>
@@ -82,18 +80,19 @@
         // 物理演算
         const AIR_DRAG = 0.998; 
         const GRAVITY = 0.5; 
-        const MAX_THROW_FORCE = 35; 
+        //  修正点 1: 最大投擲力を大幅に強化 
+        const MAX_THROW_FORCE = 50; // 35から50に増加
         const NUM_POSTS = 10; 
 
-        //  固定発射位置 
+        //  修正点 2: 発射位置をより下に移動 
         const LAUNCH_POS_X = CANVAS_WIDTH / 2;
-        const LAUNCH_POS_Y = CANVAS_HEIGHT - 70;
+        const LAUNCH_POS_Y = CANVAS_HEIGHT - 30; // 70から30に減少 (Canvasの底に近づける)
 
-        //  棒のサイズと配置範囲 
+        // 棒のサイズと配置範囲 
         const POST_HEIGHT = 70;
         const POST_WIDTH = 10;
-        const POST_MIN_Y = CANVAS_HEIGHT * 0.2; // 画面上部20%
-        const POST_MAX_Y = CANVAS_HEIGHT * 0.7; // 画面下部70%
+        const POST_MIN_Y = CANVAS_HEIGHT * 0.2; 
+        const POST_MAX_Y = CANVAS_HEIGHT * 0.7; 
 
         // ゲームの状態
         let score = 0;
@@ -104,7 +103,7 @@
         let posts = [];
         
         let isDragging = false;
-        let launchPos = { x: LAUNCH_POS_X, y: LAUNCH_POS_Y }; // 常に固定
+        let launchPos = { x: LAUNCH_POS_X, y: LAUNCH_POS_Y }; 
         let currentMousePos = { x: 0, y: 0 }; 
 
         const scoreElement = document.getElementById('score');
@@ -113,11 +112,11 @@
         canvas.width = CANVAS_WIDTH;
         canvas.height = CANVAS_HEIGHT;
 
-        // --- ゲーム要素のクラス定義 ---
+        // --- ゲーム要素のクラス定義 (変更なし) ---
         class Post {
             constructor(x, y) {
-                this.x = x; // 棒の中心X
-                this.y = y; // 棒の上端Y
+                this.x = x; 
+                this.y = y; 
                 this.width = POST_WIDTH;
                 this.height = POST_HEIGHT; 
                 this.scoreValue = 1; 
@@ -125,7 +124,6 @@
             }
             draw() {
                 ctx.fillStyle = this.color;
-                // 棒を上端Yから下に描画
                 ctx.fillRect(this.x - this.width / 2, this.y, this.width, this.height);
             }
         }
@@ -151,13 +149,11 @@
                 this.x += this.vx;
                 this.y += this.vy;
                 
-                // 画面端の跳ね返り (左右)
                 if (this.x - this.radius < 0 || this.x + this.radius > CANVAS_WIDTH) {
                     this.vx *= -0.5; 
                     this.x = Math.max(this.radius, Math.min(this.x, CANVAS_WIDTH - this.radius));
                 }
                 
-                // 床に当たったら跳ね返り
                 if (this.y + this.radius > CANVAS_HEIGHT) {
                     this.y = CANVAS_HEIGHT - this.radius;
                     this.vy *= -0.3; 
@@ -178,26 +174,20 @@
         }
         // ------------------------------------------
 
-        //  棒のランダム配置 
         function initializePosts() {
             posts = []; 
             for (let i = 0; i < NUM_POSTS; i++) {
-                // 画面端と発射位置を避けてランダムに配置
                 const x = Math.random() * (CANVAS_WIDTH - RING_RADIUS * 4) + RING_RADIUS * 2;
                 const y = Math.random() * (POST_MAX_Y - POST_MIN_Y) + POST_MIN_Y; 
                 posts.push(new Post(x, y));
             }
         }
         
-        //  衝突判定（ランダムな浮遊棒対応） 
         function checkCollisions(ring) {
             if (ring.isScored) return;
             for (const post of posts) {
-                // 1. リングの中心Xが棒の幅内にある
                 const isCentered = Math.abs(ring.x - post.x) < post.width / 2;
-                // 2. リングの上端が棒の上端Yよりも下にある (輪が棒を通り過ぎようとしている)
                 const isPassedOver = ring.y - ring.radius < post.y;
-                // 3. リングの中心Yが棒の縦の範囲内にある
                 const isInsideVerticalRange = ring.y < post.y + post.height && ring.y > post.y - RING_RADIUS/2;
 
                 if (isCentered && isPassedOver && isInsideVerticalRange) {
@@ -208,7 +198,6 @@
                     ring.isTossed = false;
                     ring.vy = 0;
                     ring.vx = 0;
-                    // 棒の上端に輪をスナップさせる
                     ring.y = post.y + ring.radius; 
                     return;
                 }
@@ -227,31 +216,28 @@
             }
         }
 
-        // --- 投擲イベント ---
+        // --- 投擲イベント (変更なし: LAUNCH_POS_Yの定義が変わったため、広いドラッグ範囲を確保) ---
 
-        //  mousedown: 固定発射位置 
         canvas.addEventListener('mousedown', function(event) {
             if (!gameActive || rings.some(r => r.isTossed)) return; 
 
-            // マウス位置を記録
             const rect = canvas.getBoundingClientRect();
             currentMousePos = { 
                 x: event.clientX - rect.left, 
                 y: event.clientY - rect.top 
             };
             
-            // 固定発射位置の周りでクリックされた場合のみドラッグを開始（バネUIの誤発動防止）
+            // 発射位置の半径100px以内でのクリックでドラッグ開始
             const distanceToLaunchPos = Math.sqrt(
                 Math.pow(currentMousePos.x - LAUNCH_POS_X, 2) + 
                 Math.pow(currentMousePos.y - LAUNCH_POS_Y, 2)
             );
             
-            if (distanceToLaunchPos < 100) { // 発射位置の半径100px以内
+            if (distanceToLaunchPos < 100) { 
                  isDragging = true;
             }
         });
 
-        //  mousemove: バネUI表示 
         canvas.addEventListener('mousemove', function(event) {
             if (!isDragging) return;
             const rect = canvas.getBoundingClientRect();
@@ -259,27 +245,24 @@
                 x: event.clientX - rect.left, 
                 y: event.clientY - rect.top 
             };
-            
             updateGuideLine(launchPos, currentMousePos);
         });
 
-        //  mouseup: 固定位置から発射 
         canvas.addEventListener('mouseup', function() {
             if (!isDragging) return;
 
             isDragging = false;
             guideElement.style.width = '0px'; 
 
-            // 発射ベクトルを計算
             const dx = launchPos.x - currentMousePos.x;
             const dy = launchPos.y - currentMousePos.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
             
             if (distance < 5) return; 
 
+            // 距離をMAX_THROW_FORCEにクリップして力を決定
             const force = Math.min(distance / 10, MAX_THROW_FORCE); 
 
-            // 輪を固定発射位置から作成
             const newRing = new Ring(LAUNCH_POS_X, LAUNCH_POS_Y);
             newRing.vx = (dx / distance) * force;
             newRing.vy = (dy / distance) * force;
@@ -292,12 +275,10 @@
             }
         });
         
-        // ガイドラインの更新関数 (バネUI)
         function updateGuideLine(start, end) {
             const dx = start.x - end.x;
             const dy = start.y - end.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
-            // 描画はマウスを引いた方向 (startからend)
             const angle = Math.atan2(dy, dx); 
             
             const visualDistance = Math.min(distance, 250); 
@@ -309,13 +290,13 @@
         }
 
 
-        // --- メインループとゲーム制御 ---
+        // --- メインループとゲーム制御 (変更なし) ---
         let animationFrameId = null;
 
         function animate() {
             ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
             
-            //  固定発射位置のマーカー 
+            // 固定発射位置のマーカー
             ctx.fillStyle = 'yellow';
             ctx.beginPath();
             ctx.arc(LAUNCH_POS_X, LAUNCH_POS_Y, 10, 0, Math.PI * 2);
@@ -397,7 +378,6 @@
             document.getElementById('game-container').appendChild(restartButton);
         }
 
-        // Enterキーでのスタート/再開
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 if (!gameActive) {
@@ -406,7 +386,6 @@
             }
         });
 
-        // 棒を初期配置し、待機画面でアニメーションを開始
         initializePosts();
         animate(); 
     });
