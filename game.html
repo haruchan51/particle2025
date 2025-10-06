@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>輪投げゲーム（空気中）</title>
+    <title>輪投げゲーム</title>
     <style>
         body {
             margin: 0;
             overflow: hidden;
-            background-color: #38b43d; /* 緑の芝生や屋外をイメージ */
+            background-color: #38b43d; /* 芝生の色 */
             display: flex;
             justify-content: center;
             align-items: center;
@@ -32,6 +32,7 @@
             background-color: rgba(255, 255, 255, 0.9);
             padding: 10px 20px;
             border-radius: 8px;
+            /*  文字化け対策フォント群  */
             font-family: 'Hiragino Kaku Gothic Pro', 'Meiryo', 'MS Gothic', sans-serif; 
             font-size: 24px;
             font-weight: bold;
@@ -51,7 +52,7 @@
             pointer-events: none;
             z-index: 20;
         }
-        /* クリック可能エリアを示す視覚的なガイド */
+        /* クリック可能エリアを示す半透明の帯 */
         #launch-area-guide {
             position: absolute;
             bottom: 0;
@@ -88,12 +89,12 @@
         const TOTAL_TIME = 60; 
         const RING_RADIUS = 25;
         
-        //  物理演算の修正点 
-        const AIR_DRAG = 0.998; // 抵抗を大幅に減らし、勢いを維持
-        const GRAVITY = 0.5; // 重力を強め、放物線を大きくする
-        
-        const MAX_THROW_FORCE = 35; // 最大投擲力を強くし、遠くまで飛ぶように調整
+        //  空気中の物理演算 
+        const AIR_DRAG = 0.998; 
+        const GRAVITY = 0.5; 
+        const MAX_THROW_FORCE = 35; 
         const LAUNCH_AREA_HEIGHT = 200; 
+        const NUM_POSTS = 10; //  棒の数 
 
         // ゲームの状態
         let score = 0;
@@ -105,7 +106,6 @@
         
         let isDragging = false;
         let launchPos = { x: 0, y: 0 }; 
-        let currentMousePos = { x: 0, y: 0 }; 
 
         // UI要素
         const scoreElement = document.getElementById('score');
@@ -122,7 +122,7 @@
                 this.width = 10;
                 this.height = height; 
                 this.scoreValue = 1; 
-                this.color = '#ffaa00'; // 黄色い棒
+                this.color = '#ffaa00';
             }
             draw() {
                 ctx.fillStyle = this.color;
@@ -144,27 +144,25 @@
             update() {
                 if (!this.isTossed || this.isScored) return;
                 
-                //  物理演算の適用 
-                this.vx *= AIR_DRAG; // わずかな空気抵抗
+                this.vx *= AIR_DRAG; 
                 this.vy *= AIR_DRAG;
-                this.vy += GRAVITY; // 強めの重力で放物線を描く
+                this.vy += GRAVITY; 
 
                 this.x += this.vx;
                 this.y += this.vy;
                 
                 // 画面端の跳ね返り (左右)
                 if (this.x - this.radius < 0 || this.x + this.radius > CANVAS_WIDTH) {
-                    this.vx *= -0.5; // 減衰を大きくして勢いを失わせる
+                    this.vx *= -0.5; 
                     this.x = Math.max(this.radius, Math.min(this.x, CANVAS_WIDTH - this.radius));
                 }
                 
                 // 床に当たったら跳ね返り
                 if (this.y + this.radius > CANVAS_HEIGHT) {
                     this.y = CANVAS_HEIGHT - this.radius;
-                    this.vy *= -0.3; // 床に当たると大きく減衰
+                    this.vy *= -0.3; 
                     this.vx *= 0.6; 
                     
-                    // ほとんど止まったら投擲完了とみなす
                     if (Math.abs(this.vy) < 0.5 && Math.abs(this.vx) < 0.5) {
                         this.isTossed = false; 
                     }
@@ -182,10 +180,9 @@
 
         function initializePosts() {
             posts = []; 
-            const numPosts = 10; 
-            const spacing = CANVAS_WIDTH / (numPosts + 1); 
+            const spacing = CANVAS_WIDTH / (NUM_POSTS + 1); 
             
-            for (let i = 1; i <= numPosts; i++) {
+            for (let i = 1; i <= NUM_POSTS; i++) {
                 const x = spacing * i;
                 const height = Math.random() * 200 + 100; 
                 posts.push(new Post(x, height));
@@ -195,6 +192,7 @@
         function checkCollisions(ring) {
             if (ring.isScored) return;
             for (const post of posts) {
+                // 当たり判定ロジック
                 const isWithinX = Math.abs(ring.x - post.x) < post.width / 2;
                 const isBelowTop = ring.y + ring.radius > post.y - post.height;
                 const isAboveTop = ring.y - ring.radius < post.y - post.height;
@@ -204,6 +202,7 @@
                     scoreElement.textContent = score;
                     ring.isScored = true;
                     ring.color = '#33cc33';
+                    // 棒に刺さったら動きを止める
                     ring.isTossed = false;
                     ring.vy = 0;
                     ring.vx = 0;
@@ -219,148 +218,3 @@
             if (timeRemaining <= 0) {
                 timeRemaining = 0;
                 timerElement.textContent = '0.00';
-                endGame();
-            } else {
-                timerElement.textContent = timeRemaining.toFixed(2);
-            }
-        }
-
-        // --- 投擲イベント ---
-
-        const isLaunchArea = (y) => y > CANVAS_HEIGHT - LAUNCH_AREA_HEIGHT; 
-
-        // マウスの押下 (ドラッグ開始)
-        canvas.addEventListener('mousedown', function(event) {
-            const rect = canvas.getBoundingClientRect();
-            const mouseX = event.clientX - rect.left;
-            const mouseY = event.clientY - rect.top;
-
-            if (isLaunchArea(mouseY) && gameActive && !rings.some(r => r.isTossed)) {
-                isDragging = true;
-                launchPos = { x: mouseX, y: mouseY };
-                currentMousePos = { x: mouseX, y: mouseY };
-            }
-        });
-
-        // マウスの移動（ドラッグ中）
-        canvas.addEventListener('mousemove', function(event) {
-            if (!isDragging) return;
-
-            const rect = canvas.getBoundingClientRect();
-            currentMousePos = { 
-                x: event.clientX - rect.left, 
-                y: event.clientY - rect.top 
-            };
-            
-            updateGuideLine(launchPos, currentMousePos);
-        });
-
-        // マウスのリリース（発射実行）
-        canvas.addEventListener('mouseup', function() {
-            if (!isDragging) return;
-
-            isDragging = false;
-            guideElement.style.width = '0px'; 
-
-            const dx = launchPos.x - currentMousePos.x;
-            const dy = launchPos.y - currentMousePos.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            if (distance < 5) { 
-                return;
-            }
-
-            const force = Math.min(distance / 10, MAX_THROW_FORCE); 
-
-            const newRing = new Ring(launchPos.x, launchPos.y);
-            newRing.vx = (dx / distance) * force;
-            newRing.vy = (dy / distance) * force;
-            newRing.isTossed = true;
-            
-            rings.push(newRing);
-
-            if (!animationFrameId) {
-                animate();
-            }
-        });
-
-        // ガイドラインの更新関数
-        function updateGuideLine(start, end) {
-            const dx = start.x - end.x;
-            const dy = start.y - end.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            const angle = Math.atan2(-dy, -dx);
-
-            const visualForce = Math.min(distance, 250); 
-            
-            guideElement.style.left = `${start.x}px`;
-            guideElement.style.top = `${start.y}px`;
-            guideElement.style.width = `${visualForce}px`;
-            guideElement.style.transform = `rotate(${angle}rad)`;
-        }
-
-
-        // --- メインループとゲーム制御 ---
-        let animationFrameId = null;
-
-        function animate() {
-            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-            posts.forEach(post => post.draw());
-            rings.forEach(ring => {
-                ring.update();
-                ring.draw();
-                checkCollisions(ring);
-            });
-            const isAnyRingMoving = rings.some(r => r.isTossed);
-            if (gameActive || isAnyRingMoving) {
-                animationFrameId = requestAnimationFrame(animate);
-            } else {
-                animationFrameId = null; 
-            }
-        }
-        
-        function startGame() {
-            score = 0;
-            timeRemaining = TOTAL_TIME;
-            gameActive = true;
-            rings = [];
-            
-            scoreElement.textContent = score;
-            timerElement.textContent = timeRemaining.toFixed(2);
-            
-            const oldButton = document.getElementById('restart-button');
-            if (oldButton) oldButton.remove();
-
-            initializePosts();
-            clearInterval(gameInterval);
-            gameInterval = setInterval(updateGame, 100); 
-        }
-
-        function endGame() {
-            gameActive = false;
-            clearInterval(gameInterval);
-
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-            
-            ctx.fillStyle = 'white';
-            ctx.font = '40px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText(`時間切れ！最終スコア: ${score}点`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 20);
-            
-            const restartButton = document.createElement('button');
-            restartButton.id = 'restart-button';
-            restartButton.textContent = 'もう一度プレイ';
-            restartButton.style.cssText = 'position: absolute; top: 55%; left: 50%; transform: translate(-50%, -50%); padding: 15px 30px; font-size: 24px; cursor: pointer;';
-            restartButton.onclick = () => {
-                startGame();
-            };
-            document.getElementById('game-container').appendChild(restartButton);
-        }
-
-        // ゲーム開始
-        startGame();
-    });
-</script>
-</body>
-</html>
