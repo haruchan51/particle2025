@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ブロック・ブラスト・アタック (クイズ搭載版)</title>
+    <title>ブロック・ブラスト・アタック (最終版)</title>
     <style>
         body {
             margin: 0;
@@ -60,7 +60,7 @@
             z-index: 10;
             display: flex; 
             gap: 30px;
-            align-items: center; /* ボタンのための追加 */
+            align-items: center;
         }
         
         /* 共通スタイル */
@@ -80,6 +80,10 @@
             border-radius: 5px;
             cursor: pointer;
             box-shadow: 0 4px #00BFFF;
+            transition: background-color 0.1s;
+        }
+        .menu-button:hover {
+             background-color: #00BFFF;
         }
         #ranking-list, #home-ranking-list {
             list-style: none;
@@ -147,7 +151,7 @@
         /* ホーム/終了画面 */
         #home-screen, #end-screen {
              text-align: center;
-             display: none; /* JSで制御 */
+             display: none;
         }
         #home-screen h3 {
             margin-top: 50px;
@@ -215,7 +219,7 @@
         const continueButton = document.getElementById('continue-button');
         const endTitle = document.getElementById('end-title');
         const rankingList = document.getElementById('ranking-list');
-        const homeButton = document.getElementById('home-button'); // 🚨 追加: ホームボタン
+        const homeButton = document.getElementById('home-button');
         
         // --- ゲームの定数 ---
         const CANVAS_WIDTH = 800;
@@ -246,7 +250,6 @@
         let gameStartTime = 0;
         let stageClearTimes = {};
         let keys = { ArrowLeft: false, ArrowRight: false };
-        let usedQuizIndices = []; // 🚨 追加: 出題済みクイズのインデックスを保持
 
         // --- 特典管理 ---
         let ballSpeedMultiplier = 1.0; 
@@ -256,7 +259,7 @@
         canvas.width = CANVAS_WIDTH;
         canvas.height = CANVAS_HEIGHT;
 
-        // --- クイズデータ (レパートリー増加) ---
+        // --- クイズデータ ---
         const QUIZ_DATA = [
             {
                 question: "2024年10月にノーベル化学賞を受賞した日本人科学者の名前は？",
@@ -289,6 +292,10 @@
                 answer: "カール・マルクス"
             }
         ];
+        
+        // --- クイズ履歴管理用のキー ---
+        const USED_QUIZ_KEY = 'BlockBlastUsedQuizIndices';
+
 
         // --- ブロックのクラス (変更なし) ---
         class Block {
@@ -325,7 +332,7 @@
             }
         }
         
-        // --- ボールのクラス (変更なし) ---
+        // --- ボールのクラス ---
         class Ball {
             constructor(startX, startY, initialVY) {
                 this.x = startX;
@@ -335,11 +342,11 @@
                 this.vx = 0;
                 this.vy = initialVY;
                 this.isLaunched = true;
-                this.isControlled = false;
+                this.isControlled = true; // 🚨 変更: 初期は制御可能
             }
             
             applyForces() {
-                // 🚨 修正: isControlledがtrueの間だけ、プレイヤーの操作（矢印キー）を受け付ける
+                // 🚨 修正: 制御可能な間だけ、プレイヤーの操作（矢印キー）を受け付ける
                 if (this.isControlled) {
                     if (keys.ArrowLeft)  this.vx -= CONTROL_FORCE;
                     if (keys.ArrowRight) this.vx += CONTROL_FORCE;
@@ -355,10 +362,14 @@
 
             update() {
                 if (!this.isLaunched) return;
+                
+                // 🚨 削除: 発射台から離れたら制御無効にするロジックは削除
+                
                 this.applyForces();
                 this.x += this.vx;
                 this.y += this.vy;
                 
+                // 壁の反射
                 if (this.x - this.radius < 0 || this.x + this.radius > CANVAS_WIDTH) {
                     this.vx *= -1;
                     this.x = Math.max(this.radius, Math.min(this.x, CANVAS_WIDTH - this.radius));
@@ -368,6 +379,7 @@
                     this.y = this.radius;
                 }
                 
+                // 画面外へ
                 if (this.y + this.radius > CANVAS_HEIGHT) {
                     this.isLaunched = false;
                 }
@@ -406,12 +418,6 @@
             balls = balls.filter(ball => ball.isLaunched);
 
             balls.forEach(ball => {
-                // 発射直後、一定の高さまで制御を有効にするロジック
-                if (ball.y < LAUNCH_POS_Y - 30) { 
-                    if (ball.isControlled === false) { // 一度制御を無効化したら再有効化しないためのチェック
-                        ball.isControlled = true;
-                    }
-                }
                 
                 for (let i = blocks.length - 1; i >= 0; i--) {
                     const block = blocks[i];
@@ -424,7 +430,7 @@
                     
                     if ((distanceX * distanceX + distanceY * distanceY) < (ball.radius * ball.radius)) {
                         
-                        // 🚨 修正: ブロックに当たったら制御を無効化
+                        // 🚨 修正: 最初のブロックに当たった瞬間、制御を無効化
                         ball.isControlled = false;
 
                         // 速度の反転 (貫通弾の場合は反転しない)
@@ -485,7 +491,23 @@
             }
         }
 
-        // --- クイズ機能 (再出題禁止ロジック追加) ---
+        // --- クイズ履歴管理機能 (変更なし) ---
+        function loadUsedQuizIndices() {
+            const json = localStorage.getItem(USED_QUIZ_KEY);
+            return json ? JSON.parse(json) : [];
+        }
+
+        function saveUsedQuizIndex(index) {
+            let indices = loadUsedQuizIndices();
+            if (!indices.includes(index)) {
+                indices.push(index);
+                if (indices.length > QUIZ_DATA.length - 1) { 
+                    indices = []; 
+                }
+                localStorage.setItem(USED_QUIZ_KEY, JSON.stringify(indices));
+            }
+        }
+        
         function showQuiz() {
             gameState = 'PAUSED_QUIZ';
             uiOverlay.style.display = 'flex';
@@ -497,35 +519,37 @@
             
             quizStageNumElement.textContent = currentStage;
 
-            // 🚨 修正: 未出題のクイズインデックスを選択するロジック
-            const availableIndices = QUIZ_DATA
-                .map((_, index) => index)
-                .filter(index => !usedQuizIndices.includes(index));
+            const usedIndices = loadUsedQuizIndices();
+            const allIndices = QUIZ_DATA.map((_, index) => index);
+            let availableIndices = allIndices.filter(index => !usedIndices.includes(index));
 
             if (availableIndices.length === 0) {
-                // クイズが尽きた場合（通常は発生しない）
-                endGame(true); 
-                return;
+                localStorage.removeItem(USED_QUIZ_KEY);
+                availableIndices = QUIZ_DATA.map((_, index) => index);
             }
             
             const quizIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
-            usedQuizIndices.push(quizIndex); // 選択したインデックスを出題済みに追加
-            
             const currentQuiz = QUIZ_DATA[quizIndex];
             
-            quizQuestionElement.textContent = currentQuiz.question;
+            quizQuestionElement.textContent = availableIndices.length === QUIZ_DATA.length 
+                ? `(全問リセット) ${currentQuiz.question}`
+                : currentQuiz.question;
+            
+            setupQuizOptions(currentQuiz, quizIndex);
+        }
+        
+        function setupQuizOptions(currentQuiz, quizIndex) {
             quizOptionsElement.innerHTML = '';
-
             currentQuiz.options.forEach(option => {
                 const button = document.createElement('button');
                 button.className = 'quiz-option';
                 button.textContent = option;
-                button.onclick = () => checkQuiz(button.textContent, currentQuiz.answer);
+                button.onclick = () => checkQuiz(button.textContent, currentQuiz.answer, quizIndex);
                 quizOptionsElement.appendChild(button);
             });
         }
         
-        function checkQuiz(selectedAnswer, correctAnswer) {
+        function checkQuiz(selectedAnswer, correctAnswer, quizIndex) {
             const options = document.querySelectorAll('.quiz-option');
             options.forEach(btn => {
                 btn.disabled = true; 
@@ -535,6 +559,8 @@
                     btn.style.backgroundColor = '#FF3131'; 
                 }
             });
+            
+            saveUsedQuizIndex(quizIndex); 
 
             if (selectedAnswer === correctAnswer) {
                 applyQuizReward(true);
@@ -585,7 +611,7 @@
             launchTimer = setInterval(launchBall, LAUNCH_INTERVAL); 
         }
 
-        // --- UI / ランキング処理 ---
+        // --- UI / ランキング処理 (変更なし) ---
         const RANKING_KEY = 'BlockBlastRanking';
 
         function loadRanking() {
@@ -617,7 +643,7 @@
             });
         }
         
-        // --- 🏆 ホーム画面機能 (ゲーム中からの遷移に対応) 🏆 ---
+        // --- 🏆 ホーム画面機能 (変更なし) ---
         function showHome() {
             gameState = 'HOME';
             uiOverlay.style.display = 'flex';
@@ -625,10 +651,8 @@
             quizScreen.style.display = 'none';
             endScreen.style.display = 'none';
             
-            // 🚨 追記: ゲーム中のタイマーを停止
             clearInterval(launchTimer);
 
-            // ホーム画面にランキングを表示
             displayRanking(homeRankingList);
         }
 
@@ -636,18 +660,16 @@
             score = 0;
             currentStage = 1;
             stageClearTimes = {};
-            usedQuizIndices = []; // 🚨 追記: ゲーム開始時にリセット
             
             ballSpeedMultiplier = 1.0;
             isPenetrating = false;
             currentPaddleWidth = DEFAULT_PADDLE_WIDTH;
             
-            homeScreen.style.display = 'none'; // ホーム画面を非表示
+            homeScreen.style.display = 'none'; 
 
             gameStartTime = Date.now(); 
             scoreElement.textContent = score;
 
-            // 最初のステージはクイズから開始
             showQuiz();
 
             if (!animationFrameId) {
@@ -670,7 +692,6 @@
             }
             
             gameState = 'ENDED';
-            // 終了画面のランキング表示
             displayRanking(rankingList); 
             
             quizScreen.style.display = 'none'; 
@@ -678,7 +699,7 @@
             uiOverlay.style.display = 'flex';
         }
 
-        // --- ゲームループと制御 ---
+        // --- ゲームループと制御 (変更なし) ---
         let animationFrameId = null;
 
         function animate() {
@@ -707,11 +728,11 @@
             animationFrameId = requestAnimationFrame(animate);
         }
         
-        // --- イベントリスナー ---
-        document.getElementById('restart-button').addEventListener('click', showHome); // 終了画面からホームへ
-        startGameButton.addEventListener('click', startGame);                       // ホーム画面からゲーム開始へ
+        // --- イベントリスナー (変更なし) ---
+        document.getElementById('restart-button').addEventListener('click', showHome); 
+        startGameButton.addEventListener('click', startGame);                       
         continueButton.addEventListener('click', continueGame);
-        homeButton.addEventListener('click', showHome);                             // 🚨 追加: ゲーム中のホームへボタン
+        homeButton.addEventListener('click', showHome);                             
 
         document.addEventListener('keydown', (e) => {
             if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -726,7 +747,6 @@
             }
         });
 
-        // 画面ロード時にホーム画面を表示
         showHome();
         animate(); 
     });
