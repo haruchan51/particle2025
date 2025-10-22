@@ -13,21 +13,21 @@
             align-items: center;
             height: 100vh;
             background: #202020;
-            font-family: 'Montserrat', sans-serif; /* モダンなフォントに変更 */
+            font-family: 'Montserrat', sans-serif; 
             color: white;
         }
         #game-container {
             position: relative;
             width: 800px;
             height: 600px;
-            border: 10px solid #FF00AA; /* ネオンピンクのボーダー */
+            border: 10px solid #FF00AA; 
             border-radius: 20px;
             overflow: hidden;
-            box-shadow: 0 0 30px rgba(255, 0, 170, 0.8); /* ネオン効果 */
+            box-shadow: 0 0 30px rgba(255, 0, 170, 0.8); 
         }
         canvas {
             display: block;
-            background: #0A0A0A; /* より暗い背景 */
+            background: #0A0A0A; 
         }
 
         /* --- UI スタイル --- */
@@ -56,7 +56,7 @@
             border-radius: 10px;
             font-size: 20px;
             font-weight: bold;
-            color: #39FF14; /* ネオングリーン */
+            color: #39FF14; 
             z-index: 10;
             display: flex; 
             gap: 30px;
@@ -66,9 +66,9 @@
         
         /* 共通スタイル */
         .title {
-            font-size: 60px; /* タイトルを大きく */
+            font-size: 60px; 
             color: #FFD700;
-            text-shadow: 0 0 10px #FFD700; /* ゴールドのネオン効果 */
+            text-shadow: 0 0 10px #FFD700; 
             margin-bottom: 40px;
         }
         .menu-button {
@@ -77,7 +77,7 @@
             font-size: 26px;
             font-weight: bold;
             color: #0A0A0A;
-            background-color: #00FFFF; /* シアン */
+            background-color: #00FFFF; 
             border: none;
             border-radius: 5px;
             cursor: pointer;
@@ -207,7 +207,7 @@
         
         // --- パドル自動移動用の状態 ---
         let paddleX = CANVAS_WIDTH / 2; // 発射台の中心X座標
-        let paddleVx = 3; // 🚨 追加: 発射台の速度
+        let paddleVx = 3; // 発射台の速度
         const PADDLE_MOVEMENT_RANGE = 200; // 発射台の移動範囲の半径
         const PADDLE_CENTER_X = CANVAS_WIDTH / 2;
         
@@ -384,7 +384,7 @@
             }
         }
         
-        // 🚨 追加: 発射台の自動移動ロジック
+        // 🚨 修正: 発射台の自動移動ロジック
         function updatePaddlePosition() {
             if (gameState !== 'PLAYING') return;
 
@@ -392,7 +392,7 @@
             
             // 移動範囲の境界チェック (中心からPADDLE_MOVEMENT_RANGEの範囲)
             const minX = PADDLE_CENTER_X - PADDLE_MOVEMENT_RANGE + currentPaddleWidth;
-            const maxX = PADDER_CENTER_X + PADDLE_MOVEMENT_RANGE - currentPaddleWidth;
+            const maxX = PADDLE_CENTER_X + PADDLE_MOVEMENT_RANGE - currentPaddleWidth; // 🚨 バグ修正: PADDER_CENTER_X -> PADDLE_CENTER_X
 
             if (paddleX - currentPaddleWidth < minX || paddleX + currentPaddleWidth > maxX) {
                 paddleVx *= -1; 
@@ -419,7 +419,7 @@
                     
                     if ((distanceX * distanceX + distanceY * distanceY) < (ball.radius * ball.radius)) {
                         
-                        // 🚨 修正: 最初のブロックに当たった瞬間、制御を無効化
+                        // 最初のブロックに当たった瞬間、制御を無効化
                         ball.isControlled = false;
 
                         // 速度の反転 (貫通弾の場合は反転しない)
@@ -469,7 +469,7 @@
             if (gameState !== 'PLAYING') return;
             
             if (balls.filter(b => b.isLaunched).length < 10) { 
-                // 🚨 修正: ボールの初期位置を現在のpaddleXに合わせる
+                // ボールの初期位置を現在のpaddleXに合わせる
                 const newBall = new Ball(paddleX, LAUNCH_POS_Y, INITIAL_VELOCITY_Y * ballSpeedMultiplier);
                 if (isPenetrating) {
                     newBall.color = '#FFD700'; 
@@ -634,7 +634,7 @@
             });
         }
         
-        // --- 🏆 ホーム画面機能 ---
+        // --- 🏆 ホーム画面機能 (変更なし) ---
         function showHome() {
             gameState = 'HOME';
             uiOverlay.style.display = 'flex';
@@ -698,7 +698,7 @@
             ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
             
             if (gameState === 'PLAYING') {
-                updatePaddlePosition(); // 🚨 実行: パドルを自動で動かす
+                updatePaddlePosition(); // パドルを自動で動かす
 
                 const elapsed = Date.now() - gameStartTime;
                 timeDisplayElement.textContent = (elapsed / 1000).toFixed(2);
@@ -706,7 +706,6 @@
                 // 発射台（パドル）の描画
                 ctx.fillStyle = '#9370DB'; 
                 ctx.beginPath();
-                // 🚨 修正: paddleXを使用
                 ctx.arc(paddleX, LAUNCH_POS_Y, currentPaddleWidth, 0, Math.PI * 2); 
                 ctx.fill();
                 
@@ -723,13 +722,13 @@
             animationFrameId = requestAnimationFrame(animate);
         }
         
-        // --- イベントリスナー ---
+        // --- イベントリスナー (変更なし) ---
         document.getElementById('restart-button').addEventListener('click', showHome); 
         startGameButton.addEventListener('click', startGame);                       
         continueButton.addEventListener('click', continueGame);
         homeButton.addEventListener('click', showHome);                             
 
-        // 🚨 修正: 発射台が自動で動くため、左右のキー操作はボールの微調整にのみ影響する
+        // 左右のキー操作はボールの微調整にのみ影響する
         document.addEventListener('keydown', (e) => {
             if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
                 if (gameState === 'PLAYING') keys[e.code] = true;
