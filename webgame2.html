@@ -40,7 +40,7 @@
             display: none; 
             justify-content: center;
             align-items: center;
-            background: rgba(0, 0, 0, 0.95); /* より暗く */
+            background: rgba(0, 0, 0, 0.95);
             z-index: 100;
             flex-direction: column;
             padding: 20px;
@@ -60,6 +60,43 @@
             z-index: 10;
             display: flex; 
             gap: 30px;
+            align-items: center; /* ボタンのための追加 */
+        }
+        
+        /* 共通スタイル */
+        .title {
+            font-size: 48px;
+            color: #FFD700;
+            margin-bottom: 40px;
+        }
+        .menu-button {
+            padding: 15px 30px;
+            margin: 10px;
+            font-size: 24px;
+            font-weight: bold;
+            color: #202020;
+            background-color: #00FFFF;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 4px #00BFFF;
+        }
+        #ranking-list, #home-ranking-list {
+            list-style: none;
+            padding: 0;
+            width: 80%;
+            max-width: 400px;
+            margin-top: 20px;
+            text-align: left;
+        }
+        #ranking-list li, #home-ranking-list li {
+            background-color: #333;
+            margin-bottom: 8px;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 18px;
+            display: flex;
+            justify-content: space-between;
         }
 
         /* クイズ画面 */
@@ -90,19 +127,11 @@
             cursor: pointer;
             transition: background-color 0.1s;
         }
-        .quiz-option:hover {
-            background-color: #00BFFF;
-        }
-        .result-text {
-            font-size: 30px;
-            font-weight: bold;
-            margin-top: 20px;
-        }
         .result-text.correct {
-            color: #39FF14; /* ネオングリーン */
+            color: #39FF14;
         }
         .result-text.incorrect {
-            color: #FF3131; /* ネオンレッド */
+            color: #FF3131;
         }
         #continue-button {
             margin-top: 30px;
@@ -115,32 +144,16 @@
             cursor: pointer;
         }
 
-        /* ゲーム終了画面 */
-        #end-screen {
+        /* ホーム/終了画面 */
+        #home-screen, #end-screen {
              text-align: center;
+             display: none; /* JSで制御 */
         }
-        .title {
-            font-size: 48px;
-            color: #FFD700;
-            margin-bottom: 40px;
+        #home-screen h3 {
+            margin-top: 50px;
+            color: #00FFFF;
         }
-        #ranking-list {
-            list-style: none;
-            padding: 0;
-            width: 80%;
-            max-width: 400px;
-            margin-top: 20px;
-            text-align: left;
-        }
-        #ranking-list li {
-            background-color: #333;
-            margin-bottom: 8px;
-            padding: 10px;
-            border-radius: 4px;
-            font-size: 18px;
-            display: flex;
-            justify-content: space-between;
-        }
+
     </style>
 </head>
 <body>
@@ -150,11 +163,19 @@
         <div>スコア: <span id="score">0</span></div>
         <div class="stage-label">ステージ: <span id="stage-num">1</span>/3</div>
         <div class="time-label">時間: <span id="time-display">0.00</span>秒</div>
+        <button id="home-button" class="menu-button" style="padding: 5px 10px; font-size: 16px; margin: 0; background-color: #FFD700; color: #202020;">ホームへ</button>
     </div>
 
     <canvas id="blockBlastCanvas"></canvas>
 
     <div id="ui-overlay">
+        <div id="home-screen">
+            <div class="title">ブロック・ブラスト・アタック</div>
+            <button class="menu-button" id="start-game-button">ゲーム開始</button>
+            <h3>🏆 総合クリアタイムランキング 🏆</h3>
+            <ol id="home-ranking-list"></ol>
+        </div>
+
         <div id="quiz-screen">
             <h2>ステージ <span id="quiz-stage-num">1</span> クイズチャレンジ!</h2>
             <p id="quiz-question"></p>
@@ -163,10 +184,11 @@
             <button id="continue-button" style="display: none;">ゲーム再開</button>
         </div>
 
-        <div id="end-screen" style="display: none;">
+        <div id="end-screen">
              <div class="title" id="end-title"></div>
+             <h3>あなたの記録</h3>
              <ol id="ranking-list"></ol>
-             <button class="menu-button" id="restart-button">もう一度遊ぶ</button>
+             <button class="menu-button" id="restart-button">ホームへ戻る</button>
         </div>
     </div>
 </div>
@@ -179,6 +201,11 @@
         const stageNumElement = document.getElementById('stage-num');
         const timeDisplayElement = document.getElementById('time-display');
         const uiOverlay = document.getElementById('ui-overlay');
+        
+        // --- UI要素 ---
+        const homeScreen = document.getElementById('home-screen');
+        const startGameButton = document.getElementById('start-game-button');
+        const homeRankingList = document.getElementById('home-ranking-list');
         const endScreen = document.getElementById('end-screen');
         const quizScreen = document.getElementById('quiz-screen');
         const quizStageNumElement = document.getElementById('quiz-stage-num');
@@ -188,13 +215,14 @@
         const continueButton = document.getElementById('continue-button');
         const endTitle = document.getElementById('end-title');
         const rankingList = document.getElementById('ranking-list');
+        const homeButton = document.getElementById('home-button'); // 🚨 追加: ホームボタン
         
         // --- ゲームの定数 ---
         const CANVAS_WIDTH = 800;
         const CANVAS_HEIGHT = 600;
         const BALL_RADIUS = 10;
         const CONTROL_FORCE = 0.5;
-        let INITIAL_VELOCITY_Y = -15; // 速度ブーストで変更される
+        let INITIAL_VELOCITY_Y = -15; 
         const LAUNCH_INTERVAL = 100; 
         const DEFAULT_PADDLE_WIDTH = 40;
         
@@ -209,7 +237,7 @@
         
         // --- ゲームの状態 ---
         let score = 0;
-        let gameState = 'PLAYING';
+        let gameState = 'HOME'; 
         let blocks = [];
         let balls = [];
         let launchTimer;
@@ -218,6 +246,7 @@
         let gameStartTime = 0;
         let stageClearTimes = {};
         let keys = { ArrowLeft: false, ArrowRight: false };
+        let usedQuizIndices = []; // 🚨 追加: 出題済みクイズのインデックスを保持
 
         // --- 特典管理 ---
         let ballSpeedMultiplier = 1.0; 
@@ -227,7 +256,7 @@
         canvas.width = CANVAS_WIDTH;
         canvas.height = CANVAS_HEIGHT;
 
-        // --- クイズデータ ---
+        // --- クイズデータ (レパートリー増加) ---
         const QUIZ_DATA = [
             {
                 question: "2024年10月にノーベル化学賞を受賞した日本人科学者の名前は？",
@@ -243,10 +272,25 @@
                 question: "北海道の県庁所在地であり、2024年に冬季オリンピック招致を断念した都市は？",
                 options: ["旭川市", "札幌市", "函館市", "帯広市"],
                 answer: "札幌市"
+            },
+            {
+                question: "太陽系の惑星の中で、最も多くの衛星（月）を持つとされる惑星は？",
+                options: ["木星", "土星", "天王星", "海王星"],
+                answer: "土星"
+            },
+            {
+                question: "日本最古の歌集であり、約4500首の歌が収められているものは？",
+                options: ["古今和歌集", "新古今和歌集", "万葉集", "竹取物語"],
+                answer: "万葉集"
+            },
+            {
+                question: "「資本論」の著者であり、科学的社会主義の創始者の一人として知られる思想家は？",
+                options: ["マックス・ウェーバー", "アダム・スミス", "カール・マルクス", "ジョン・ロック"],
+                answer: "カール・マルクス"
             }
         ];
 
-        // --- ブロックのクラス (HPを色で表現) ---
+        // --- ブロックのクラス (変更なし) ---
         class Block {
             constructor(x, y, color, health) {
                 this.x = x; 
@@ -258,7 +302,7 @@
             }
             draw() {
                 const damageRatio = 1 - (this.health / this.maxHealth); 
-                let hue = (1 - damageRatio) * 120; // 120 (緑) から 0 (赤) へ
+                let hue = (1 - damageRatio) * 120; 
                 let saturation = 100;
                 let lightness = 50 - (damageRatio * 20); 
 
@@ -281,7 +325,7 @@
             }
         }
         
-        // --- ボールのクラス ---
+        // --- ボールのクラス (変更なし) ---
         class Ball {
             constructor(startX, startY, initialVY) {
                 this.x = startX;
@@ -295,13 +339,14 @@
             }
             
             applyForces() {
+                // 🚨 修正: isControlledがtrueの間だけ、プレイヤーの操作（矢印キー）を受け付ける
                 if (this.isControlled) {
                     if (keys.ArrowLeft)  this.vx -= CONTROL_FORCE;
                     if (keys.ArrowRight) this.vx += CONTROL_FORCE;
                 }
                 
                 const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-                const MAX_SPEED = 15 * ballSpeedMultiplier; // 速度ブースト適用
+                const MAX_SPEED = 15 * ballSpeedMultiplier; 
                 if (currentSpeed > MAX_SPEED) {
                     this.vx = (this.vx / currentSpeed) * MAX_SPEED;
                     this.vy = (this.vy / currentSpeed) * MAX_SPEED;
@@ -336,7 +381,7 @@
             }
         }
 
-        // --- ステージレイアウトと難易度調整 ---
+        // --- ゲームロジック ---
         function initializeBlocks(stage) {
             blocks = [];
             let blockHealth;
@@ -361,8 +406,11 @@
             balls = balls.filter(ball => ball.isLaunched);
 
             balls.forEach(ball => {
+                // 発射直後、一定の高さまで制御を有効にするロジック
                 if (ball.y < LAUNCH_POS_Y - 30) { 
-                    ball.isControlled = true;
+                    if (ball.isControlled === false) { // 一度制御を無効化したら再有効化しないためのチェック
+                        ball.isControlled = true;
+                    }
                 }
                 
                 for (let i = blocks.length - 1; i >= 0; i--) {
@@ -376,6 +424,9 @@
                     
                     if ((distanceX * distanceX + distanceY * distanceY) < (ball.radius * ball.radius)) {
                         
+                        // 🚨 修正: ブロックに当たったら制御を無効化
+                        ball.isControlled = false;
+
                         // 速度の反転 (貫通弾の場合は反転しない)
                         if (!isPenetrating) {
                             const penetrationDepthX = ball.radius - Math.abs(distanceX);
@@ -401,7 +452,6 @@
                             
                             if (currentStage < 3) {
                                 currentStage++;
-                                // ステージクリア後はクイズへ
                                 showQuiz(); 
                                 return;
                             } else {
@@ -415,7 +465,6 @@
                 }
             });
             
-            // 全ての玉が落ちたらゲームオーバー
             if (balls.length > 0 && balls.filter(b => b.isLaunched).length === 0) {
                 endGame(false);
             }
@@ -426,37 +475,47 @@
             
             if (balls.filter(b => b.isLaunched).length < 10) { 
                 const newBall = new Ball(LAUNCH_POS_X, LAUNCH_POS_Y, INITIAL_VELOCITY_Y * ballSpeedMultiplier);
-                // 貫通弾発動中の玉は色を変えて視覚化
                 if (isPenetrating) {
-                    newBall.color = '#FFD700'; // ゴールド
-                    // 貫通弾は1発で終了
+                    newBall.color = '#FFD700'; 
                     isPenetrating = false; 
                 } else {
-                    newBall.color = '#00FFFF'; // シアン
+                    newBall.color = '#00FFFF'; 
                 }
                 balls.push(newBall);
             }
         }
 
-        // --- クイズ機能 ---
+        // --- クイズ機能 (再出題禁止ロジック追加) ---
         function showQuiz() {
             gameState = 'PAUSED_QUIZ';
             uiOverlay.style.display = 'flex';
             quizScreen.style.display = 'block';
-            endScreen.style.display = 'none';
+            homeScreen.style.display = 'none'; 
+            endScreen.style.display = 'none'; 
             quizResultMessageElement.style.display = 'none';
             continueButton.style.display = 'none';
             
             quizStageNumElement.textContent = currentStage;
 
-            // クイズデータをランダムに選択（ステージ数以上のデータがあることを前提）
-            const quizIndex = (currentStage - 1) % QUIZ_DATA.length;
+            // 🚨 修正: 未出題のクイズインデックスを選択するロジック
+            const availableIndices = QUIZ_DATA
+                .map((_, index) => index)
+                .filter(index => !usedQuizIndices.includes(index));
+
+            if (availableIndices.length === 0) {
+                // クイズが尽きた場合（通常は発生しない）
+                endGame(true); 
+                return;
+            }
+            
+            const quizIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
+            usedQuizIndices.push(quizIndex); // 選択したインデックスを出題済みに追加
+            
             const currentQuiz = QUIZ_DATA[quizIndex];
             
             quizQuestionElement.textContent = currentQuiz.question;
             quizOptionsElement.innerHTML = '';
 
-            // オプションボタンの生成
             currentQuiz.options.forEach(option => {
                 const button = document.createElement('button');
                 button.className = 'quiz-option';
@@ -469,11 +528,11 @@
         function checkQuiz(selectedAnswer, correctAnswer) {
             const options = document.querySelectorAll('.quiz-option');
             options.forEach(btn => {
-                btn.disabled = true; // 回答後は無効化
+                btn.disabled = true; 
                 if (btn.textContent === correctAnswer) {
-                    btn.style.backgroundColor = '#39FF14'; // 正解は緑
+                    btn.style.backgroundColor = '#39FF14'; 
                 } else if (btn.textContent === selectedAnswer) {
-                    btn.style.backgroundColor = '#FF3131'; // 不正解は赤
+                    btn.style.backgroundColor = '#FF3131'; 
                 }
             });
 
@@ -492,26 +551,20 @@
         }
 
         function applyQuizReward(isCorrect) {
-            // リセット
             ballSpeedMultiplier = 1.0;
             isPenetrating = false;
             currentPaddleWidth = DEFAULT_PADDLE_WIDTH;
 
             if (isCorrect) {
-                // 正解特典
-                ballSpeedMultiplier = 1.3; // 30%速度アップ
-                isPenetrating = true;      // 1発だけ貫通弾
+                ballSpeedMultiplier = 1.3; 
+                isPenetrating = true;
                 
-                // 10秒後にリセットするタイマー
                 setTimeout(() => {
                     ballSpeedMultiplier = 1.0;
-                    // isPenetratingは玉発射時にリセットされる
                 }, 10000); 
             } else {
-                // 不正解ペナルティ
-                currentPaddleWidth = DEFAULT_PADDLE_WIDTH / 2; // パドル半減
+                currentPaddleWidth = DEFAULT_PADDLE_WIDTH / 2; 
 
-                 // 10秒後にリセットするタイマー
                 setTimeout(() => {
                     currentPaddleWidth = DEFAULT_PADDLE_WIDTH;
                 }, 10000);
@@ -522,66 +575,74 @@
             quizScreen.style.display = 'none';
             uiOverlay.style.display = 'none';
             
-            // 新しいステージのブロックを生成
             initializeBlocks(currentStage); 
             balls = [];
             stageNumElement.textContent = `${currentStage}/3`;
 
-            // ゲーム再開
             gameState = 'PLAYING'; 
             
             clearInterval(launchTimer);
             launchTimer = setInterval(launchBall, LAUNCH_INTERVAL); 
         }
 
-        // --- ゲームループと制御 ---
-        let animationFrameId = null;
+        // --- UI / ランキング処理 ---
+        const RANKING_KEY = 'BlockBlastRanking';
 
-        function animate() {
-            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        function loadRanking() {
+            const json = localStorage.getItem(RANKING_KEY);
+            return json ? JSON.parse(json) : [];
+        }
+
+        function saveRanking(totalTime) {
+            let rankings = loadRanking();
+            rankings.push(totalTime);
+            rankings.sort((a, b) => a - b); 
+            rankings = rankings.slice(0, 10);
+            localStorage.setItem(RANKING_KEY, JSON.stringify(rankings));
+        }
+
+        function displayRanking(listElement) {
+            const rankings = loadRanking();
+            listElement.innerHTML = '';
             
-            if (gameState === 'PLAYING') {
-                const elapsed = Date.now() - gameStartTime;
-                timeDisplayElement.textContent = (elapsed / 1000).toFixed(2);
-                
-                // 発射台（パドル）の描画
-                ctx.fillStyle = '#9370DB'; 
-                ctx.beginPath();
-                ctx.arc(LAUNCH_POS_X, LAUNCH_POS_Y, currentPaddleWidth, 0, Math.PI * 2); // パドル幅適用
-                ctx.fill();
-                
-                // 貫通弾発動中の視覚効果
-                if (isPenetrating) {
-                    ctx.strokeStyle = '#FFD700'; 
-                    ctx.lineWidth = 5;
-                    ctx.stroke();
-                }
-
-                blocks.forEach(block => block.draw());
-                balls.forEach(ball => {
-                    if(ball.isLaunched) { 
-                        ball.update();
-                        ball.draw();
-                    }
-                });
-                checkCollisions();
+            if (rankings.length === 0) {
+                listElement.innerHTML = '<li>まだ記録がありません。</li>';
+                return;
             }
 
-            animationFrameId = requestAnimationFrame(animate);
+            rankings.forEach((time, index) => {
+                const li = document.createElement('li');
+                li.innerHTML = `<span>${index + 1}.</span> <span>${time.toFixed(2)}秒</span>`;
+                listElement.appendChild(li);
+            });
         }
         
+        // --- 🏆 ホーム画面機能 (ゲーム中からの遷移に対応) 🏆 ---
+        function showHome() {
+            gameState = 'HOME';
+            uiOverlay.style.display = 'flex';
+            homeScreen.style.display = 'block';
+            quizScreen.style.display = 'none';
+            endScreen.style.display = 'none';
+            
+            // 🚨 追記: ゲーム中のタイマーを停止
+            clearInterval(launchTimer);
+
+            // ホーム画面にランキングを表示
+            displayRanking(homeRankingList);
+        }
+
         function startGame() {
             score = 0;
             currentStage = 1;
             stageClearTimes = {};
+            usedQuizIndices = []; // 🚨 追記: ゲーム開始時にリセット
             
             ballSpeedMultiplier = 1.0;
             isPenetrating = false;
             currentPaddleWidth = DEFAULT_PADDLE_WIDTH;
             
-            uiOverlay.style.display = 'none'; 
-            endScreen.style.display = 'none';
-            quizScreen.style.display = 'none';
+            homeScreen.style.display = 'none'; // ホーム画面を非表示
 
             gameStartTime = Date.now(); 
             scoreElement.textContent = score;
@@ -609,47 +670,49 @@
             }
             
             gameState = 'ENDED';
-            displayRanking();
-            endScreen.style.display = 'block';
+            // 終了画面のランキング表示
+            displayRanking(rankingList); 
+            
+            quizScreen.style.display = 'none'; 
+            endScreen.style.display = 'block'; 
             uiOverlay.style.display = 'flex';
         }
 
-        // --- ランキング処理 (変更なし) ---
-        const RANKING_KEY = 'BlockBlastRanking';
+        // --- ゲームループと制御 ---
+        let animationFrameId = null;
 
-        function loadRanking() {
-            const json = localStorage.getItem(RANKING_KEY);
-            return json ? JSON.parse(json) : [];
-        }
-
-        function saveRanking(totalTime) {
-            let rankings = loadRanking();
-            rankings.push(totalTime);
-            rankings.sort((a, b) => a - b); 
-            rankings = rankings.slice(0, 10);
-            localStorage.setItem(RANKING_KEY, JSON.stringify(rankings));
-        }
-
-        function displayRanking() {
-            const rankings = loadRanking();
-            rankingList.innerHTML = '';
+        function animate() {
+            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
             
-            if (rankings.length === 0) {
-                rankingList.innerHTML = '<li>まだ記録がありません。</li>';
-                return;
+            if (gameState === 'PLAYING') {
+                const elapsed = Date.now() - gameStartTime;
+                timeDisplayElement.textContent = (elapsed / 1000).toFixed(2);
+                
+                // 発射台（パドル）の描画
+                ctx.fillStyle = '#9370DB'; 
+                ctx.beginPath();
+                ctx.arc(LAUNCH_POS_X, LAUNCH_POS_Y, currentPaddleWidth, 0, Math.PI * 2); 
+                ctx.fill();
+                
+                blocks.forEach(block => block.draw());
+                balls.forEach(ball => {
+                    if(ball.isLaunched) { 
+                        ball.update();
+                        ball.draw();
+                    }
+                });
+                checkCollisions();
             }
 
-            rankings.forEach((time, index) => {
-                const li = document.createElement('li');
-                li.innerHTML = `<span>${index + 1}.</span> <span>${time.toFixed(2)}秒</span>`;
-                rankingList.appendChild(li);
-            });
+            animationFrameId = requestAnimationFrame(animate);
         }
         
         // --- イベントリスナー ---
-        document.getElementById('restart-button').addEventListener('click', startGame);
+        document.getElementById('restart-button').addEventListener('click', showHome); // 終了画面からホームへ
+        startGameButton.addEventListener('click', startGame);                       // ホーム画面からゲーム開始へ
         continueButton.addEventListener('click', continueGame);
-        
+        homeButton.addEventListener('click', showHome);                             // 🚨 追加: ゲーム中のホームへボタン
+
         document.addEventListener('keydown', (e) => {
             if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
                 if (gameState === 'PLAYING') keys[e.code] = true;
@@ -663,7 +726,8 @@
             }
         });
 
-        startGame();
+        // 画面ロード時にホーム画面を表示
+        showHome();
         animate(); 
     });
 </script>
