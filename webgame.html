@@ -19,42 +19,35 @@
             position: relative;
             width: 800px;
             height: 500px;
-            border: 10px solid #FF69B4; /* ピンクの枠 */
+            border: 10px solid #FF69B4; 
             border-radius: 40px;
             overflow: hidden;
             box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
-            background: #4682B4; /* スティールブルー */
+            background: #4682B4; 
         }
         canvas {
             display: block;
-            background: linear-gradient(to top, #4682B4, #87CEEB); /* 水と空のグラデーション */
+            background: linear-gradient(to top, #4682B4, #87CEEB); 
         }
         #game-controls {
             position: absolute;
             bottom: 0;
             left: 0;
             width: 100%;
-            height: 100px; /* ポンプボタン用のスペース */
+            height: 100px; 
             display: flex;
             justify-content: center;
             align-items: center;
             background-color: rgba(255, 255, 255, 0.2);
+            gap: 20px;
         }
-        #pump-button {
-            padding: 15px 30px;
-            font-size: 24px;
+        .control-info {
+            font-size: 18px;
             font-weight: bold;
             color: white;
-            background-color: #FF4500; /* オレンジレッド */
-            border: 5px solid #FFD700;
-            border-radius: 15px;
-            cursor: pointer;
-            box-shadow: 0 5px #B8860B;
-            transition: all 0.1s;
-        }
-        #pump-button:active {
-            box-shadow: 0 2px #B8860B;
-            transform: translateY(3px);
+            padding: 10px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border-radius: 8px;
         }
         #score-board {
             position: absolute;
@@ -69,7 +62,6 @@
             color: #333;
             z-index: 10;
         }
-        /* イルカの装飾 */
         #dolphin {
             position: absolute;
             top: 10px;
@@ -87,29 +79,29 @@
     <div id="score-board">スコア: <span id="score">0</span></div>
     <canvas id="waterGameCanvas"></canvas>
     <div id="game-controls">
-        <button id="pump-button">水圧ポンプ (スペースキー)</button>
+        <div class="control-info">操作: 👆 👇 👈 👉 (方向キー)</div>
     </div>
 </div>
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        const container = document.getElementById('game-container');
         const canvas = document.getElementById('waterGameCanvas');
         const ctx = canvas.getContext('2d');
-        const pumpButton = document.getElementById('pump-button');
         const scoreElement = document.getElementById('score');
 
         // --- ゲームの定数 ---
         const CANVAS_WIDTH = 800;
-        const CANVAS_HEIGHT = 400; // コントロールエリアを除いたCanvasの高さ
+        const CANVAS_HEIGHT = 400; 
         const RING_RADIUS = 15;
         const NUM_RINGS = 8;
         const NUM_POSTS = 4;
         
         // 物理演算
-        const GRAVITY = 0.3; // 重力
-        const WATER_DRAG = 0.99; // 水の抵抗 (摩擦)
-        const PUMP_FORCE = -8; // ポンプを押したときの上向きの力 (負の値で上方向)
+        const GRAVITY = 0.3; 
+        const WATER_DRAG = 0.98; // 水の抵抗 (摩擦を少し強める)
+        // 🚨 修正点 1: 制御された移動力 🚨
+        const MOVE_FORCE = 0.8; // 方向キーを押したときの移動力
+        const MAX_SPEED = 5;    // 最大速度を制限
 
         // ターゲット (棒) の設定
         const POST_HEIGHT = 70;
@@ -120,55 +112,65 @@
         let gameActive = false;
         let rings = [];
         let posts = [];
-        let isPumping = false;
+        // 🚨 修正点 2: 押されているキーの状態 🚨
+        let keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
 
         canvas.width = CANVAS_WIDTH;
         canvas.height = CANVAS_HEIGHT;
 
-        // --- 描画関数 (海の仲間テーマ) ---
+        // --- 描画関数 ---
 
-        // 輪のクラス (水中の動きをシミュレート)
         class Ring {
             constructor(startX, startY, color) {
                 this.x = startX;
                 this.y = startY;
                 this.radius = RING_RADIUS;
                 this.color = color;
-                this.vy = 0; // 垂直速度のみ (水なので横移動は基本的にしない)
+                this.vx = 0; // 横方向の速度を追加
+                this.vy = 0; // 垂直速度
                 this.isScored = false;
             }
 
             update() {
                 if (this.isScored) return;
 
-                // ポンプによる上向きの力
-                if (isPumping) {
-                    this.vy += PUMP_FORCE; 
-                    // 勢いが強すぎる場合は速度を制限
-                    this.vy = Math.max(this.vy, PUMP_FORCE * 2); 
-                }
+                // 🚨 修正点 3: 方向キーによる速度の加算 🚨
+                if (keys.ArrowUp)    this.vy -= MOVE_FORCE;
+                if (keys.ArrowDown)  this.vy += MOVE_FORCE;
+                if (keys.ArrowLeft)  this.vx -= MOVE_FORCE;
+                if (keys.ArrowRight) this.vx += MOVE_FORCE;
                 
-                // 重力
+                // 重力は常に下向きにかかる (ウォーターゲームの「沈む力」)
                 this.vy += GRAVITY;
 
-                // 水の抵抗
+                // 水の抵抗 (速度を減衰させる)
                 this.vy *= WATER_DRAG; 
+                this.vx *= WATER_DRAG; 
+                
+                // 最大速度制限
+                this.vy = Math.min(Math.max(this.vy, -MAX_SPEED), MAX_SPEED);
+                this.vx = Math.min(Math.max(this.vx, -MAX_SPEED), MAX_SPEED);
 
+                this.x += this.vx;
                 this.y += this.vy;
 
-                // 画面上端・下端のバウンド
+                // 画面端のバウンド処理
                 if (this.y - this.radius < 0) {
                     this.y = this.radius;
-                    this.vy *= -0.5; // 少し跳ね返る
+                    this.vy *= -0.5;
                 }
                 if (this.y + this.radius > CANVAS_HEIGHT) {
                     this.y = CANVAS_HEIGHT - this.radius;
-                    this.vy *= -0.5; // 少し跳ね返る
+                    this.vy *= -0.5;
                 }
-
-                // 横移動の微調整 (完全に静止していると不自然なので、揺らぎを加える)
-                this.x += Math.sin(Date.now() / 1000 + this.y) * 0.1; 
-                this.x = Math.max(this.radius, Math.min(this.x, CANVAS_WIDTH - this.radius));
+                if (this.x - this.radius < 0) {
+                    this.x = this.radius;
+                    this.vx *= -0.5;
+                }
+                if (this.x + this.radius > CANVAS_WIDTH) {
+                    this.x = CANVAS_WIDTH - this.radius;
+                    this.vx *= -0.5;
+                }
             }
 
             draw() {
@@ -178,7 +180,6 @@
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
                 ctx.stroke();
 
-                // 水中の泡の表現
                 ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
                 ctx.beginPath();
                 ctx.arc(this.x + this.radius * 0.5, this.y - this.radius * 0.5, this.radius * 0.3, 0, Math.PI * 2);
@@ -186,22 +187,19 @@
             }
         }
 
-        // 棒のクラス
         class Post {
             constructor(x, y, color) {
                 this.x = x; 
-                this.y = y; // 棒の土台のY座標
+                this.y = y; 
                 this.color = color;
                 this.scoreValue = 1;
             }
 
             draw() {
-                // 棒本体 (海藻やサンゴのイメージで装飾)
                 ctx.fillStyle = this.color;
                 ctx.fillRect(this.x - POST_WIDTH / 2, this.y - POST_HEIGHT, POST_WIDTH, POST_HEIGHT);
 
-                // 土台 (サンゴ礁)
-                ctx.fillStyle = '#FF7F50'; // Coral
+                ctx.fillStyle = '#FF7F50'; 
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, 15, 0, Math.PI * 2);
                 ctx.fill();
@@ -211,13 +209,13 @@
         // --- 初期化 ---
 
         function initializeGame() {
-            // 輪の初期化 (左側に縦に並べる)
+            // 輪の初期化 (左下に集める)
             rings = [];
-            const ringColors = ['#FFD700', '#FF6347', '#00FFFF', '#ADFF2F']; // 金、赤、シアン、緑
+            const ringColors = ['#FFD700', '#FF6347', '#00FFFF', '#ADFF2F'];
             for (let i = 0; i < NUM_RINGS; i++) {
                 rings.push(new Ring(
-                    50 + (i % 2) * 20, // 左右に少しずらして重ねる
-                    CANVAS_HEIGHT - 30 - i * (RING_RADIUS * 2 + 5), // 下から上に配置
+                    50 + (i % 4) * (RING_RADIUS * 0.5), 
+                    CANVAS_HEIGHT - 30 - Math.floor(i / 4) * (RING_RADIUS * 2 + 5), 
                     ringColors[i % ringColors.length]
                 ));
             }
@@ -226,13 +224,12 @@
             posts = [];
             for (let i = 0; i < NUM_POSTS; i++) {
                 const x = CANVAS_WIDTH - 150 - i * 150;
-                // 土台のY座標はランダムに (海底の起伏を表現)
                 const y = CANVAS_HEIGHT - 30 + Math.sin(i) * 15; 
                 posts.push(new Post(x, y, '#FFFF00'));
             }
         }
 
-        // --- 衝突判定 ---
+        // --- 衝突判定 (横移動対応) ---
 
         function checkCollisions() {
             rings.forEach(ring => {
@@ -241,24 +238,26 @@
                 posts.forEach(post => {
                     const postTopY = post.y - POST_HEIGHT;
                     
-                    // 輪が棒のX座標に近づいたか
-                    const isCentered = Math.abs(ring.x - post.x) < POST_WIDTH + 5;
+                    // 輪の中心が棒のX範囲にいるか
+                    const isCenteredX = Math.abs(ring.x - post.x) < POST_WIDTH;
 
-                    // 輪の中心が棒の範囲内にあるか
-                    const isInsidePostRange = ring.y - ring.radius > postTopY && ring.y + ring.radius < post.y;
+                    // 輪のY座標が棒の上端Yと土台Yの間にあるか
+                    const isInsidePostY = ring.y - ring.radius > postTopY && ring.y + ring.radius < post.y;
 
                     // 輪が棒に引っかかった（輪投げ成功）
-                    if (isCentered && isInsidePostRange) {
+                    if (isCenteredX && isInsidePostY) {
                         score += post.scoreValue;
                         scoreElement.textContent = score;
                         ring.isScored = true;
                         
-                        // 輪を棒の周りに固定
+                        // 輪を棒のX座標にスナップ
                         ring.x = post.x;
-                        ring.y = post.y - POST_HEIGHT / 2; // 棒の中央付近にスナップ
+                        ring.y = post.y - POST_HEIGHT / 2;
+                        ring.vx = 0; 
+                        ring.vy = 0;
                         
-                        ring.draw = function() { // スコア後の描画を上書き
-                            ctx.strokeStyle = '#90EE90'; // スコア済みは緑
+                        ring.draw = function() { 
+                            ctx.strokeStyle = '#90EE90';
                             ctx.lineWidth = 5;
                             ctx.beginPath();
                             ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
@@ -272,15 +271,13 @@
         // --- ゲームループと制御 ---
 
         function drawSeaCreatures() {
-            // 背景の装飾 (魚や海藻)
-            ctx.fillStyle = '#66CCFF'; // 明るい水色
+            ctx.fillStyle = '#66CCFF'; 
             ctx.font = '24px sans-serif';
             ctx.fillText('🐠', 500, 150);
             ctx.fillText('🦀', 250, 350);
             ctx.fillText('🐙', 650, 200);
 
-            // 海底の砂
-            ctx.fillStyle = '#F0E68C'; // Khaki
+            ctx.fillStyle = '#F0E68C'; 
             ctx.fillRect(0, CANVAS_HEIGHT - 20, CANVAS_WIDTH, 20);
         }
 
@@ -297,7 +294,6 @@
             
             checkCollisions();
 
-            // ゲームスタート前の画面
             if (!gameActive) {
                  ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
                  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -306,7 +302,7 @@
                  ctx.textAlign = 'center';
                  ctx.fillText(`🌊 ウォーターゲーム 🌊`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 40);
                  ctx.font = '24px "Comic Sans MS", "Arial Rounded MT Bold", sans-serif';
-                 ctx.fillText(`「ポンプ」ボタンかスペースキーで輪を浮かせてね！`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 10);
+                 ctx.fillText(`方向キー (👆👇👈👉) で輪を操作してね！`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 10);
                  ctx.fillText(`Enterキーを押してゲームスタート！`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 50);
             }
 
@@ -321,35 +317,20 @@
             initializeGame();
         }
 
-        // --- イベントリスナー ---
+        // --- イベントリスナー (方向キー操作) ---
 
-        // ポンプ操作の開始
-        pumpButton.addEventListener('mousedown', () => {
-            if (gameActive) isPumping = true;
-        });
         document.addEventListener('keydown', (e) => {
-            if (gameActive && e.code === 'Space' && !isPumping) {
+            if (gameActive && keys.hasOwnProperty(e.code)) {
+                keys[e.code] = true;
                 e.preventDefault(); 
-                isPumping = true;
+            } else if (e.key === 'Enter' && !gameActive) {
+                startGame();
             }
         });
 
-        // ポンプ操作の終了
-        pumpButton.addEventListener('mouseup', () => {
-            isPumping = false;
-        });
         document.addEventListener('keyup', (e) => {
-            if (e.code === 'Space') {
-                isPumping = false;
-            }
-        });
-        
-        // ゲームスタート (Enterキー)
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                if (!gameActive) {
-                    startGame();
-                }
+            if (gameActive && keys.hasOwnProperty(e.code)) {
+                keys[e.code] = false;
             }
         });
 
