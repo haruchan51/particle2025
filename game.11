@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ゆらゆらキャンディタワー</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            /* 可愛らしい空のようなグラデーション */
+            background: linear-gradient(to bottom, #87CEEB, #ADD8E6); 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Comic Sans MS', 'Arial Rounded MT Bold', sans-serif;
+        }
+        #game-container {
+            position: relative;
+        }
+        canvas {
+            display: block;
+            border: 5px solid #6A5ACD;
+            /* Canvasの背景も明るい空色 */
+            background: linear-gradient(to bottom, #B0E0E6, #E0FFFF); 
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.2) inset;
+        }
+        #score-board {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 28px;
+            font-weight: bold;
+            color: #FF69B4;
+            z-index: 10;
+            display: flex;
+            gap: 40px;
+            white-space: nowrap;
+            opacity: 0; 
+            transition: opacity 0.5s;
+            border: 2px dashed #FFD700;
+        }
+        #throw-guide {
+            position: absolute;
+            width: 0;
+            height: 0;
+            border-bottom: 4px dotted #FFC0CB;
+            transform-origin: 0 0;
+            pointer-events: none;
+            z-index: 20;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="score-board">
+        <div>スコア: <span id="score">0</span> 点</div>
+        <div>残りタイム: <span id="timer">60.00</span> 秒</div>
+    </div>
+    <div id="throw-guide"></div> 
+    <canvas id="ringTossCanvas"></canvas>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const canvas = document.getElementById('ringTossCanvas');
+        const ctx = canvas.getContext('2d');
+        const guideElement = document.getElementById('throw-guide');
+        const scoreBoard = document.getElementById('score-board');
+        
+        // --- ゲームの定数 ---
+        const CANVAS_WIDTH = 1000;
+        const CANVAS_HEIGHT = 600;
+        const TOTAL_TIME = 60; 
+        const RING_RADIUS = 25;
+        
+        // 物理演算
+        const AIR_DRAG = 0.998; 
+        const GRAVITY = 0.5; 
+        const MAX_THROW_FORCE = 50; 
+        const NUM_POSTS = 10; 
+
+        // 発射位置 (画面上部中央)
+        const LAUNCH_POS_X = CANVAS_WIDTH / 2;
+        const LAUNCH_POS_Y = 100; 
+
+        // 棒のサイズと配置範囲 
+        const POST_WIDTH = 15; 
+        const POST_HEIGHT_MIN = 80;
+        const POST_HEIGHT_MAX = 150;
+        const POST_MIN_Y = CANVAS_HEIGHT * 0.3; 
+        const POST_MAX_Y = CANVAS_HEIGHT * 0.9; 
+        
+        // 🚨 新機能: 棒の揺れ設定 🚨
+        const WOBBLE_RANGE = 0.15; // 揺れの角度 (ラジアン)
+        const WOBBLE_SPEED = 0.005; // 揺れの速さ
+
+        // --- ゲームの状態 ---
+        let score = 0;
+        let timeRemaining = TOTAL_TIME;
+        let gameActive = false; 
+        let gameInterval;
+        let rings = [];
+        let posts = [];
+        
+        let isDragging = false;
+        let launchPos = { x: LAUNCH_POS_X, y: LAUNCH_POS_Y }; 
+        let currentMousePos = { x: 0, y: 0 }; 
+
+        const scoreElement = document.getElementById('score');
+        const timerElement = document.getElementById('timer');
+
+        canvas.width = CANVAS_WIDTH;
+        canvas.height = CANVAS_HEIGHT;
+
+        // --- ゲーム要素のクラス定義 ---
+        class Post {
+            constructor(x, y, height, wobbleOffset) { 
+                this.x = x; 
+                this.y = y; 
+                this.width = POST_WIDTH;
+                this.height = height;
+                this.scoreValue = 1; 
+                this.color = this.getRandomCandyColor();
+                // 🚨 新しい揺れプロパティ 🚨
+                this.wobbleTime = wobbleOffset; 
+                this.angle = 0; // 現在の角度
+            }
+
+            getRandomCandyColor() {
+                const colors = ['#FFB6C1', '#FFD700', '#87CEEB', '#98FB98', '#FFDAB9', '#BA55D3', '#FF6347'];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+            
+            // 🚨 棒の更新: 揺れの計算 🚨
+            update() {
+                this.wobbleTime += WOBBLE_SPEED;
+                this.angle = Math.sin(this.wobbleTime) * WOBBLE_RANGE;
+            }
+
+            draw() {
+                // 回転の中心（棒の下端）を設定
+                const pivotX = this.x;
+                const pivotY = this.y + this.height;
+
+                ctx.save();
+                ctx.translate(pivotX, pivotY);
+                ctx.rotate(this.angle);
+                
+                // 棒本体（回転の中心は新しい原点(0, 0)から上にずらして描画）
+                ctx.fillStyle = this.color;
+                ctx.fillRect(-this.width / 2, -this.height, this.width, this.height);
+
+                // 上下にリボン/フリルを追加 (回転と並進を考慮)
+                ctx.fillStyle = 'white';
+                const ribbonHeight = 10;
+                ctx.fillRect(-this.width / 2 - 5, -this.height - ribbonHeight / 2, this.width + 10, ribbonHeight);
+                ctx.fillRect(-this.width / 2 - 5, -ribbonHeight / 2, this.width + 10, ribbonHeight);
+
+                // 細かい縞模様を追加
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'; 
+                for (let i = 0; i < this.height; i += 10) {
+                    ctx.fillRect(-this.width / 2, -this.height + i, this.width, 5);
+                }
+
+                ctx.restore();
+            }
+        }
+
+        class Ring {
+            constructor(startX, startY) {
+                this.x = startX;
+                this.y = startY;
+                this.radius = RING_RADIUS;
+                this.color = this.getRandomRingColor();
+                this.vx = 0;
+                this.vy = 0;
+                this.isTossed = false;
+                this.isScored = false;
+            }
+
+            getRandomRingColor() {
+                const colors = ['#FF69B4', '#FFFF00', '#00BFFF', '#ADFF2F', '#FF8C00', '#EE82EE'];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            update() {
+                if (!this.isTossed || this.isScored) return;
+                
+                this.vx *= AIR_DRAG; 
+                this.vy *= AIR_DRAG;
+                this.vy += GRAVITY; 
+
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // 画面端の跳ね返り (左右)
+                if (this.x - this.radius < 0 || this.x + this.radius > CANVAS_WIDTH) {
+                    this.vx *= -0.5; 
+                    this.x = Math.max(this.radius, Math.min(this.x, CANVAS_WIDTH - this.radius));
+                }
+                
+                // 床に当たったら跳ね返り
+                if (this.y + this.radius > CANVAS_HEIGHT) {
+                    this.y = CANVAS_HEIGHT - this.radius;
+                    this.vy *= -0.3; 
+                    this.vx *= 0.6; 
+                    if (Math.abs(this.vy) < 0.5 && Math.abs(this.vx) < 0.5) {
+                        this.isTossed = false; 
+                    }
+                }
+                
+                // 天井に当たったら跳ね返り
+                if (this.y - this.radius < 0) {
+                    this.y = this.radius;
+                    this.vy *= -0.3;
+                    this.vx *= 0.6; 
+                }
+            }
+            
+            draw() {
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 8;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.stroke();
+
+                ctx.save();
+                ctx.clip(); 
+                ctx.beginPath();
+                ctx.arc(this.x + this.radius * 0.4, this.y - this.radius * 0.4, this.radius * 0.5, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+        // ------------------------------------------
+
+        // 棒のランダム配置 (揺れオフセットを追加)
+        function initializePosts() {
+            posts = []; 
+            for (let i = 0; i < NUM_POSTS; i++) {
+                const x = Math.random() * (CANVAS_WIDTH - RING_RADIUS * 4) + RING_RADIUS * 2;
+                const y = Math.random() * (POST_MAX_Y - POST_MIN_Y) + POST_MIN_Y; 
+                const height = Math.random() * (POST_HEIGHT_MAX - POST_HEIGHT_MIN) + POST_HEIGHT_MIN;
+                // 🚨 揺れの初期位相をランダムに 🚨
+                const wobbleOffset = Math.random() * Math.PI * 2; 
+                posts.push(new Post(x, y, height, wobbleOffset));
+            }
+        }
+        
+        // 🚨 衝突判定 (揺れている棒に対応) 🚨
+        function checkCollisions(ring) {
+            if (ring.isScored) return;
+            for (const post of posts) {
+                // 輪の中心から棒の上端までのベクトルを計算
+                const dx = ring.x - post.x;
+                const dy = ring.y - (post.y + post.height); 
+                
+                // 輪の中心座標を棒の回転座標系に変換
+                const cosA = Math.cos(-post.angle);
+                const sinA = Math.sin(-post.angle);
+                
+                const rotatedX = dx * cosA - dy * sinA;
+                const rotatedY = dx * sinA + dy * cosA;
+
+                // 回転後の座標で衝突判定
+                const topY = -post.height;
+                const bottomY = 0;
+                const leftX = -post.width / 2;
+                const rightX = post.width / 2;
+
+                // 輪の中心が回転後の棒のX範囲内にあり、かつY範囲内にいるか
+                const isCentered = Math.abs(rotatedX) < post.width / 2;
+                const isBelowTop = rotatedY < bottomY; // 輪の中心が棒の回転中心より上
+                const isAboveBottom = rotatedY > topY; // 輪の中心が棒の先端より下
+
+                // 輪が棒の近くを通るか（輪投げの判定は簡略化します）
+                if (isCentered && isBelowTop && isAboveBottom) {
+                    // ここでさらに正確なリング判定を行うべきだが、簡単のために棒の上端Y座標を使う
+                    // 輪が棒の上端をまたいだか（回転を考慮した棒の上端のY座標）
+                    const postTopY = post.y + post.height + (post.height * Math.cos(post.angle) - post.height); 
+
+                    // 輪が上から下へ移動しているか
+                    if (ring.vy > 0 && ring.y - ring.radius < postTopY) {
+                         // スコア判定後の処理
+                        score += post.scoreValue;
+                        scoreElement.textContent = score;
+                        ring.isScored = true;
+                        ring.color = '#90EE90';
+                        ring.isTossed = false;
+                        ring.vy = 0;
+                        ring.vx = 0;
+                        
+                        // 輪を棒にスナップさせる (回転角度は無視して垂直にスナップ)
+                        ring.x = post.x;
+                        ring.y = post.y + post.height - post.height / 2; 
+                        
+                        // 輪を棒の揺れに合わせて動かす
+                        ring.update = function() {
+                            if (this.isScored) {
+                                // 輪を棒と一緒に揺らす
+                                this.x = post.x + post.height/2 * Math.sin(post.angle); // X軸の揺れ
+                                this.y = post.y + post.height - this.radius;
+                            }
+                        }
+
+                        return;
+                    }
+                }
+            }
+        }
+
+        function updateGame() {
+            if (!gameActive) return;
+            timeRemaining -= 0.1;
+            if (timeRemaining <= 0) {
+                timeRemaining = 0;
+                timerElement.textContent = '0.00';
+                endGame();
+            } else {
+                timerElement.textContent = timeRemaining.toFixed(2);
+            }
+        }
+
+        // --- 投擲イベント（変更なし） ---
+        canvas.addEventListener('mousedown', function(event) {
+            if (!gameActive || rings.some(r => r.isTossed)) return; 
+            const rect = canvas.getBoundingClientRect();
+            currentMousePos = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+            const distanceToLaunchPos = Math.sqrt(
+                Math.pow(currentMousePos.x - LAUNCH_POS_X, 2) + 
+                Math.pow(currentMousePos.y - LAUNCH_POS_Y, 2)
+            );
+            if (distanceToLaunchPos < 100) { isDragging = true; }
+        });
+
+        canvas.addEventListener('mousemove', function(event) {
+            if (!isDragging) return;
+            const rect = canvas.getBoundingClientRect();
+            currentMousePos = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+            updateGuideLine(launchPos, currentMousePos);
+        });
+
+        canvas.addEventListener('mouseup', function() {
+            if (!isDragging) return;
+            isDragging = false;
+            guideElement.style.width = '0px'; 
+            const dx = launchPos.x - currentMousePos.x;
+            const dy = launchPos.y - currentMousePos.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            if (distance < 5) return; 
+            const force = Math.min(distance / 10, MAX_THROW_FORCE); 
+            const newRing = new Ring(LAUNCH_POS_X, LAUNCH_POS_Y);
+            newRing.vx = (dx / distance) * force;
+            newRing.vy = (dy / distance) * force;
+            newRing.isTossed = true;
+            rings.push(newRing);
+            if (!animationFrameId) { animate(); }
+        });
+        
+        function updateGuideLine(start, end) {
+            const dx = start.x - end.x;
+            const dy = start.y - end.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const angle = Math.atan2(dy, dx); 
+            const visualDistance = Math.min(distance, 250); 
+            guideElement.style.left = `${end.x}px`;
+            guideElement.style.top = `${end.y}px`;
+            guideElement.style.width = `${visualDistance}px`;
+            guideElement.style.transform = `rotate(${angle}rad)`;
+        }
+
+
+        // --- メインループとゲーム制御 ---
+        let animationFrameId = null;
+
+        function animate() {
+            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            
+            // 固定発射位置のマーカー
+            drawHeart(ctx, LAUNCH_POS_X, LAUNCH_POS_Y, 15, '#FF69B4');
+            
+            // 🚨 修正点: 棒の揺れを更新 🚨
+            posts.forEach(post => {
+                if (gameActive) post.update();
+                post.draw();
+            });
+            
+            rings.forEach(ring => {
+                ring.update();
+                ring.draw();
+                if (gameActive) {
+                    checkCollisions(ring);
+                }
+            });
+            
+            const isAnyRingMoving = rings.some(r => r.isTossed);
+            
+            if (gameActive || isAnyRingMoving || timeRemaining === TOTAL_TIME) {
+                animationFrameId = requestAnimationFrame(animate);
+            } else if (timeRemaining === 0) {
+                animationFrameId = null;
+            }
+
+            if (!gameActive) {
+                drawStartScreen();
+            }
+        }
+        
+        // ハートを描画する関数
+        function drawHeart(ctx, x, y, size, color) {
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(x, y + size / 4);
+            ctx.quadraticCurveTo(x + size / 2, y - size / 2, x + size, y - size / 4);
+            ctx.quadraticCurveTo(x + size, y + size / 2, x, y + size);
+            ctx.quadraticCurveTo(x - size, y + size / 2, x - size, y - size / 4);
+            ctx.quadraticCurveTo(x - size / 2, y - size / 2, x, y + size / 4);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        function drawStartScreen() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            
+            ctx.fillStyle = 'white';
+            ctx.font = '50px "Comic Sans MS", "Arial Rounded MT Bold", sans-serif'; 
+            ctx.textAlign = 'center';
+            if (timeRemaining === TOTAL_TIME) {
+                ctx.fillText(`✨ ゆらゆらキャンディタワー ✨`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 50);
+                ctx.font = '30px "Comic Sans MS", "Arial Rounded MT Bold", sans-serif';
+                ctx.fillText(`Enterキーでゲームスタート！ (棒が揺れるよ!)`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+            } else if (timeRemaining === 0) {
+                ctx.fillText(`ゲーム終了！`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 60);
+                ctx.fillText(`最終スコア: ${score}点`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+                ctx.font = '30px "Comic Sans MS", "Arial Rounded MT Bold", sans-serif';
+                ctx.fillText(`もう一度プレイ？Enterキーで再開！`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 60);
+            }
+        }
+
+        function startGame() {
+            if (!gameActive) {
+                score = 0;
+                timeRemaining = TOTAL_TIME;
+                gameActive = true;
+                rings = []; 
+                initializePosts(); // 新しい揺れの棒をリセット
+                
+                scoreElement.textContent = score;
+                timerElement.textContent = timeRemaining.toFixed(2);
+                scoreBoard.style.opacity = 1; 
+                
+                clearInterval(gameInterval);
+                gameInterval = setInterval(updateGame, 100); 
+                
+                if (!animationFrameId) {
+                    animate();
+                }
+            }
+        }
+
+        function endGame() {
+            gameActive = false;
+            clearInterval(gameInterval);
+            scoreBoard.style.opacity = 0.5; 
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                if (!gameActive) {
+                    startGame();
+                }
+            }
+        });
+
+        initializePosts();
+        animate(); 
+    });
+</script>
+</body>
+</html>
