@@ -176,6 +176,8 @@
         const BLOCK_WIDTH = CANVAS_WIDTH / BLOCK_COLS;
         const BLOCK_HEIGHT = 20;
         const BLOCK_START_Y = 50; 
+        const LAUNCH_POS_X = CANVAS_WIDTH / 2;
+        const LAUNCH_POS_Y = CANVAS_HEIGHT - 50; 
         
         // ゲームの状態
         let score = 0;
@@ -199,17 +201,21 @@
                 this.y = y; 
                 this.width = BLOCK_WIDTH;
                 this.height = BLOCK_HEIGHT; 
-                this.color = color; // ベースカラー (未使用だが残す)
+                this.color = color;
                 this.health = health;
                 this.maxHealth = health;
             }
             draw() {
-                // HPに基づく色の変化（削られていく表現）
-                // 🚨 修正: HPに合わせてブロックの色を濃く/薄く変化させる
                 let intensity = this.health / this.maxHealth;
+                // HPが高いほど明るい色になるように調整
                 let r = Math.floor(255 * intensity);
                 let g = Math.floor(150 * intensity);
                 let b = Math.floor(150 * intensity);
+                
+                // 🚨 修正: 最小の明るさを確保し、完全に黒くなるのを防ぐ
+                r = Math.max(r, 50); 
+                g = Math.max(g, 50);
+                b = Math.max(b, 50);
 
                 ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
                 
@@ -219,7 +225,7 @@
                 ctx.strokeRect(this.x, this.y, this.width, this.height);
 
                 // HPの数値を描画
-                ctx.fillStyle = this.health > 5 ? '#FFF' : '#000'; // HPが高いと白文字
+                ctx.fillStyle = this.health > 5 ? '#FFF' : '#000'; 
                 ctx.font = '12px sans-serif';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
@@ -277,6 +283,7 @@
             }
             
             draw() {
+                // 🚨 修正: 玉が発射台の位置に来た場合も描画されることを確認
                 ctx.fillStyle = this.color;
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
@@ -288,14 +295,14 @@
         function initializeBlocks(stage) {
             blocks = [];
             let blockHealth;
-            const HP_BASE = stage * 3; // 🚨 難易度調整: ステージに応じてHPの基本値を高くする
-            const DENSITY_FACTOR = (stage === 3) ? 1.0 : 0.8; // ステージ3はブロック密度100%
+            // 🚨 難易度調整: ステージに応じてHPの基本値を高くする
+            const HP_BASE = stage * 3; 
+            // 🚨 難易度調整: ステージ3以外は密度を調整
+            const DENSITY_FACTOR = (stage === 3) ? 1.0 : 0.8; 
 
             for (let r = 0; r < BLOCK_ROWS; r++) {
                 for (let c = 0; c < BLOCK_COLS; c++) {
-                    // 🚨 難易度調整: ステージごとにHPと配置を調整
                     if (Math.random() < DENSITY_FACTOR) { 
-                        // ランダムにHPを設定 (HPベース + 0～3)
                         blockHealth = HP_BASE + Math.floor(Math.random() * 3) + 1;
                         
                         const blockX = c * BLOCK_WIDTH;
@@ -308,11 +315,12 @@
         }
         
         function checkCollisions() {
-            // 🚨 修正: 画面外に出た玉はここでフィルタリング (後の描画ロジックと連携)
+            // 🚨 修正: 画面外に出た玉はフィルタリング
             balls = balls.filter(ball => ball.isLaunched);
 
             balls.forEach(ball => {
-                if (ball.y < LAUNCH_POS_Y - 5) {
+                // 🚨 修正: 玉が発射台から十分離れたら制御可能にする
+                if (ball.y < LAUNCH_POS_Y - 30) { 
                     ball.isControlled = true;
                 }
                 
@@ -354,7 +362,6 @@
                             if (currentStage < 3) {
                                 currentStage++;
                                 balls = [];
-                                // 🚨 修正: ステージが変わるときに新しいブロックを初期化
                                 initializeBlocks(currentStage); 
                                 stageNumElement.textContent = `${currentStage}/3`;
                             } else {
@@ -413,10 +420,17 @@
         }
 
         function setScreen(screen) {
-            uiOverlay.style.display = 'flex';
-            homeScreen.style.display = 'none';
-            rankScreen.style.display = 'none';
-            gameInfo.style.display = 'none';
+            // 🚨 修正: ゲーム開始時にUIオーバーレイを非表示にする
+            if (screen === 'PLAYING') {
+                uiOverlay.style.display = 'none';
+                gameInfo.style.display = 'flex';
+            } else {
+                uiOverlay.style.display = 'flex';
+                gameInfo.style.display = 'none';
+                homeScreen.style.display = 'none';
+                rankScreen.style.display = 'none';
+            }
+
             gameState = screen;
 
             if (screen === 'HOME') {
@@ -424,9 +438,6 @@
             } else if (screen === 'RANKING') {
                 rankScreen.style.display = 'block';
                 displayRanking();
-            } else if (screen === 'PLAYING') {
-                uiOverlay.style.display = 'none';
-                gameInfo.style.display = 'flex';
             }
         }
 
@@ -446,10 +457,8 @@
                 ctx.arc(LAUNCH_POS_X, LAUNCH_POS_Y, 20, 0, Math.PI * 2);
                 ctx.fill();
                 
-                // 🚨 ブロックと玉の描画
                 blocks.forEach(block => block.draw());
                 balls.forEach(ball => {
-                    // isLaunchedがtrueの玉のみ更新と描画を行う
                     if(ball.isLaunched) { 
                         ball.update();
                         ball.draw();
@@ -473,7 +482,6 @@
             stageNumElement.textContent = `${currentStage}/3`;
             timeDisplayElement.textContent = '0.00';
 
-            // 🚨 修正: ステージ1のブロックを初期化
             initializeBlocks(currentStage); 
             balls = [];
             scoreElement.textContent = score;
