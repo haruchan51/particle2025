@@ -12,7 +12,7 @@
             justify-content: center;
             align-items: center;
             height: 100vh;
-            background: #202020; /* ダークグレーの背景 */
+            background: #202020;
             font-family: 'Hiragino Kaku Gothic Pro', 'Meiryo', sans-serif;
             color: white;
         }
@@ -27,7 +27,7 @@
         }
         canvas {
             display: block;
-            background: #111111; /* 非常に暗いゲーム背景 */
+            background: #111111;
         }
 
         /* --- UI スタイル --- */
@@ -166,13 +166,12 @@
         const BALL_RADIUS = 10;
         
         // 物理演算
-        const PLANET_GRAVITY_FACTOR = 100; // 重力は残すが、ブロックには引力は設定しない（簡略化）
         const CONTROL_FORCE = 0.5;
         const INITIAL_VELOCITY_Y = -15; 
         const LAUNCH_INTERVAL = 100; 
 
         // ブロック設定
-        const BLOCK_ROWS = 10; // 🚨 大量のブロック
+        const BLOCK_ROWS = 10;
         const BLOCK_COLS = 16;
         const BLOCK_WIDTH = CANVAS_WIDTH / BLOCK_COLS;
         const BLOCK_HEIGHT = 20;
@@ -180,7 +179,7 @@
         
         // ゲームの状態
         let score = 0;
-        let gameState = 'HOME'; // HOME, PLAYING, RANKING
+        let gameState = 'HOME';
         let blocks = [];
         let balls = [];
         let launchTimer;
@@ -193,30 +192,34 @@
         canvas.width = CANVAS_WIDTH;
         canvas.height = CANVAS_HEIGHT;
 
-        // --- ブロックのクラス (HPシステム導入) ---
+        // --- ブロックのクラス ---
         class Block {
             constructor(x, y, color, health) {
                 this.x = x; 
                 this.y = y; 
                 this.width = BLOCK_WIDTH;
                 this.height = BLOCK_HEIGHT; 
-                this.color = color;
-                this.health = health; // HPとして機能
+                this.color = color; // ベースカラー (未使用だが残す)
+                this.health = health;
                 this.maxHealth = health;
             }
             draw() {
                 // HPに基づく色の変化（削られていく表現）
-                let alpha = this.health / this.maxHealth;
-                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                // 🚨 修正: HPに合わせてブロックの色を濃く/薄く変化させる
+                let intensity = this.health / this.maxHealth;
+                let r = Math.floor(255 * intensity);
+                let g = Math.floor(150 * intensity);
+                let b = Math.floor(150 * intensity);
+
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
                 
-                // 元の色をベースに
                 ctx.fillRect(this.x, this.y, this.width, this.height);
                 ctx.strokeStyle = '#222'; 
                 ctx.lineWidth = 1;
                 ctx.strokeRect(this.x, this.y, this.width, this.height);
 
                 // HPの数値を描画
-                ctx.fillStyle = '#000';
+                ctx.fillStyle = this.health > 5 ? '#FFF' : '#000'; // HPが高いと白文字
                 ctx.font = '12px sans-serif';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
@@ -224,7 +227,7 @@
             }
         }
         
-        // --- ボールのクラス (制御系は前バージョンを踏襲) ---
+        // --- ボールのクラス ---
         class Ball {
             constructor(startX, startY, initialVY) {
                 this.x = startX;
@@ -243,12 +246,8 @@
                     if (keys.ArrowRight) this.vx += CONTROL_FORCE;
                 }
                 
-                // ブロックブラストでは引力は無視 (惑星システムから変更)
-                // this.vy += 0.1; // 重力は残しても良いが、ここではシンプルに無視
-                
-                // 速度制限
                 const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-                const MAX_SPEED = 15; // 速度を少し上げる
+                const MAX_SPEED = 15;
                 if (currentSpeed > MAX_SPEED) {
                     this.vx = (this.vx / currentSpeed) * MAX_SPEED;
                     this.vy = (this.vy / currentSpeed) * MAX_SPEED;
@@ -285,35 +284,31 @@
             }
         }
 
-        // --- ステージレイアウト ---
+        // --- ステージレイアウトと難易度調整 ---
         function initializeBlocks(stage) {
             blocks = [];
-            let totalHealth = 0;
             let blockHealth;
+            const HP_BASE = stage * 3; // 🚨 難易度調整: ステージに応じてHPの基本値を高くする
+            const DENSITY_FACTOR = (stage === 3) ? 1.0 : 0.8; // ステージ3はブロック密度100%
 
             for (let r = 0; r < BLOCK_ROWS; r++) {
                 for (let c = 0; c < BLOCK_COLS; c++) {
-                    const blockX = c * BLOCK_WIDTH;
-                    const blockY = r * BLOCK_HEIGHT + BLOCK_START_Y;
-
-                    // ステージごとにHP設定を変更
-                    if (stage === 1) {
-                        blockHealth = Math.floor(Math.random() * 3) + 1; // 1～3
-                    } else if (stage === 2) {
-                        blockHealth = Math.floor(Math.random() * 5) + 3; // 3～7
-                    } else if (stage === 3) {
-                        blockHealth = Math.floor(Math.random() * 7) + 5; // 5～11
-                    }
-                    
-                    if (blockHealth > 0) {
+                    // 🚨 難易度調整: ステージごとにHPと配置を調整
+                    if (Math.random() < DENSITY_FACTOR) { 
+                        // ランダムにHPを設定 (HPベース + 0～3)
+                        blockHealth = HP_BASE + Math.floor(Math.random() * 3) + 1;
+                        
+                        const blockX = c * BLOCK_WIDTH;
+                        const blockY = r * BLOCK_HEIGHT + BLOCK_START_Y;
+                        
                         blocks.push(new Block(blockX, blockY, '#FFF', blockHealth));
-                        totalHealth += blockHealth;
                     }
                 }
             }
         }
         
         function checkCollisions() {
+            // 🚨 修正: 画面外に出た玉はここでフィルタリング (後の描画ロジックと連携)
             balls = balls.filter(ball => ball.isLaunched);
 
             balls.forEach(ball => {
@@ -331,17 +326,14 @@
                     const distanceY = ball.y - closestY;
                     
                     if ((distanceX * distanceX + distanceY * distanceY) < (ball.radius * ball.radius)) {
-                        // 衝突！
                         
-                        // 速度の反転 (ブロックに当たるため、速度が反転する)
+                        // 速度の反転
                         const penetrationDepthX = ball.radius - Math.abs(distanceX);
                         const penetrationDepthY = ball.radius - Math.abs(distanceY);
 
                         if (penetrationDepthX > penetrationDepthY) {
-                            // 上下衝突
                             ball.vy *= -1;
                         } else {
-                            // 左右衝突
                             ball.vx *= -1;
                         }
                         
@@ -362,7 +354,8 @@
                             if (currentStage < 3) {
                                 currentStage++;
                                 balls = [];
-                                initializeBlocks(currentStage);
+                                // 🚨 修正: ステージが変わるときに新しいブロックを初期化
+                                initializeBlocks(currentStage); 
                                 stageNumElement.textContent = `${currentStage}/3`;
                             } else {
                                 endGame(true);
@@ -370,7 +363,6 @@
                             }
                         }
                         
-                        // 1つのブロックに当たったら、次のブロックのチェックをスキップ（速度最適化）
                         break; 
                     }
                 }
@@ -380,7 +372,6 @@
         function launchBall() {
             if (gameState !== 'PLAYING') return;
             
-            // 画面上のボールが10個未満の場合のみ発射 (多すぎると重くなるため)
             if (balls.filter(b => b.isLaunched).length < 10) { 
                 const newBall = new Ball(LAUNCH_POS_X, LAUNCH_POS_Y, INITIAL_VELOCITY_Y);
                 balls.push(newBall);
@@ -399,22 +390,15 @@
 
         function saveRanking(totalTime) {
             let rankings = loadRanking();
-            
-            // 🚨 新しい記録を追加
             rankings.push(totalTime);
-            
-            // 🚨 昇順（タイムが短い順）にソート
             rankings.sort((a, b) => a - b); 
-            
-            // 🚨 トップ10のみ保持
             rankings = rankings.slice(0, 10);
-            
             localStorage.setItem(RANKING_KEY, JSON.stringify(rankings));
         }
 
         function displayRanking() {
             const rankings = loadRanking();
-            rankingList.innerHTML = ''; // リストをクリア
+            rankingList.innerHTML = '';
             
             if (rankings.length === 0) {
                 rankingList.innerHTML = '<li>まだ記録がありません。</li>';
@@ -439,7 +423,7 @@
                 homeScreen.style.display = 'block';
             } else if (screen === 'RANKING') {
                 rankScreen.style.display = 'block';
-                displayRanking(); // ランキング表示を更新
+                displayRanking();
             } else if (screen === 'PLAYING') {
                 uiOverlay.style.display = 'none';
                 gameInfo.style.display = 'flex';
@@ -462,9 +446,11 @@
                 ctx.arc(LAUNCH_POS_X, LAUNCH_POS_Y, 20, 0, Math.PI * 2);
                 ctx.fill();
                 
+                // 🚨 ブロックと玉の描画
                 blocks.forEach(block => block.draw());
                 balls.forEach(ball => {
-                    if(ball.isLaunched) {
+                    // isLaunchedがtrueの玉のみ更新と描画を行う
+                    if(ball.isLaunched) { 
                         ball.update();
                         ball.draw();
                     }
@@ -481,14 +467,14 @@
             currentStage = 1;
             stageClearTimes = {};
             
-            // 🚨 ゲーム状態をPLAYINGに設定
             setScreen('PLAYING');
 
             gameStartTime = Date.now(); 
             stageNumElement.textContent = `${currentStage}/3`;
             timeDisplayElement.textContent = '0.00';
 
-            initializeBlocks(currentStage);
+            // 🚨 修正: ステージ1のブロックを初期化
+            initializeBlocks(currentStage); 
             balls = [];
             scoreElement.textContent = score;
             
@@ -509,16 +495,13 @@
                     totalTime += stageClearTimes[i] || 0;
                 }
                 
-                // 🚨 ランキングを保存
                 saveRanking(totalTime);
-
-                // 勝利メッセージ
                 alert(`🚀 全ステージクリア！合計タイム: ${totalTime.toFixed(2)}秒でランキングに登録されました！`);
             } else {
                 alert(`ゲームオーバー... スコア: ${score}点`);
             }
             
-            setScreen('HOME'); // ホーム画面に戻る
+            setScreen('HOME');
         }
 
         // --- イベントリスナー ---
@@ -526,14 +509,12 @@
         document.getElementById('rank-button').addEventListener('click', () => setScreen('RANKING'));
         document.getElementById('back-button').addEventListener('click', () => setScreen('HOME'));
         
-        // ホーム画面でEnterキーを押してもスタート
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && gameState === 'HOME') {
                 startGame();
             }
         });
 
-        // 矢印キー制御
         document.addEventListener('keydown', (e) => {
             if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
                 if (gameState === 'PLAYING') keys[e.code] = true;
@@ -547,7 +528,6 @@
             }
         });
 
-        // 初期表示
         setScreen('HOME');
         animate(); 
     });
