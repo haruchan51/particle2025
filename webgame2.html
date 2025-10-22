@@ -1,32 +1,193 @@
-// --- ブロックのクラス ---
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ブロック・ブラスト・アタック</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: #202020;
+            font-family: 'Hiragino Kaku Gothic Pro', 'Meiryo', sans-serif;
+            color: white;
+        }
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            border: 10px solid #FF69B4;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 0 30px rgba(255, 105, 180, 0.5);
+        }
+        canvas {
+            display: block;
+            background: #111111;
+        }
+
+        /* --- ゲーム中UI --- */
+        #game-info {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 8px 15px;
+            border-radius: 10px;
+            font-size: 20px;
+            font-weight: bold;
+            color: #FF69B4;
+            z-index: 10;
+            display: flex; 
+            gap: 30px;
+        }
+
+        /* --- ランキング画面 (ゲーム終了時に表示) --- */
+        #ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none; 
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 100;
+            flex-direction: column;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .title {
+            font-size: 48px;
+            color: #FFD700;
+            margin-bottom: 40px;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.7);
+        }
+        .menu-button {
+            padding: 15px 30px;
+            margin: 10px;
+            font-size: 24px;
+            font-weight: bold;
+            color: #202020;
+            background-color: #00FFFF;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 4px #00BFFF;
+        }
+        #ranking-list {
+            list-style: none;
+            padding: 0;
+            width: 80%;
+            max-width: 400px;
+            margin-top: 20px;
+            text-align: left;
+        }
+        #ranking-list li {
+            background-color: #333;
+            margin-bottom: 8px;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 18px;
+            display: flex;
+            justify-content: space-between;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="game-info">
+        <div>スコア: <span id="score">0</span></div>
+        <div class="stage-label">ステージ: <span id="stage-num">1</span>/3</div>
+        <div class="time-label">時間: <span id="time-display">0.00</span>秒</div>
+    </div>
+
+    <canvas id="blockBlastCanvas"></canvas>
+
+    <div id="ui-overlay">
+        <div id="end-screen" style="display: block; text-align: center;">
+             <div class="title" id="end-title"></div>
+             <ol id="ranking-list"></ol>
+             <button class="menu-button" id="restart-button">もう一度遊ぶ</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const canvas = document.getElementById('blockBlastCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const stageNumElement = document.getElementById('stage-num');
+        const timeDisplayElement = document.getElementById('time-display');
+        const uiOverlay = document.getElementById('ui-overlay');
+        const endTitle = document.getElementById('end-title');
+        const rankingList = document.getElementById('ranking-list');
+        
+        // --- ゲームの定数 ---
+        const CANVAS_WIDTH = 800;
+        const CANVAS_HEIGHT = 600;
+        const BALL_RADIUS = 10;
+        const CONTROL_FORCE = 0.5;
+        const INITIAL_VELOCITY_Y = -15; 
+        const LAUNCH_INTERVAL = 100; 
+
+        // ブロック設定
+        const BLOCK_ROWS = 10;
+        const BLOCK_COLS = 16;
+        const BLOCK_WIDTH = CANVAS_WIDTH / BLOCK_COLS;
+        const BLOCK_HEIGHT = 20;
+        const BLOCK_START_Y = 50; 
+
+        // 🚨 修正: 発射台の座標を定義
+        const LAUNCH_POS_X = CANVAS_WIDTH / 2;
+        const LAUNCH_POS_Y = CANVAS_HEIGHT - 50; 
+        
+        // ゲームの状態
+        let score = 0;
+        let gameState = 'PLAYING';
+        let blocks = [];
+        let balls = [];
+        let launchTimer;
+        
+        let currentStage = 1;
+        let gameStartTime = 0;
+        let stageClearTimes = {};
+        let keys = { ArrowLeft: false, ArrowRight: false };
+
+        canvas.width = CANVAS_WIDTH;
+        canvas.height = CANVAS_HEIGHT;
+
+        // --- ブロックのクラス ---
         class Block {
-            constructor(x, y, color, health) { // colorは使わないが引数として残す
+            constructor(x, y, color, health) {
                 this.x = x; 
                 this.y = y; 
                 this.width = BLOCK_WIDTH;
                 this.height = BLOCK_HEIGHT; 
-                // this.color = color; // この行はもう不要
                 this.health = health;
                 this.maxHealth = health;
             }
             draw() {
-                // HPに基づく色の変化（削られていく表現）
-                // 損傷度合い (0.0 = 満タン, 1.0 = 破壊寸前)
+                // 🚨 修正: HPを色で表現
                 const damageRatio = 1 - (this.health / this.maxHealth); 
-
-                // HPに応じて色をグラデーションさせる
-                // 例: 満タン時は緑系、減るにつれて黄、橙、赤へ変化
                 let hue = (1 - damageRatio) * 120; // 120 (緑) から 0 (赤) へ
                 let saturation = 100;
-                let lightness = 50 - (damageRatio * 20); // HPが減ると少し暗くする (50%から30%へ)
+                let lightness = 50 - (damageRatio * 20); 
 
-                // HPが残り少ない場合はより強調する
                 if (this.health <= 1) {
-                    hue = 0; // 赤
+                    hue = 0; 
                     saturation = 100;
                     lightness = 40;
                 } else if (this.health <= 3) {
-                    hue = 30; // 橙
+                    hue = 30; 
                     saturation = 100;
                     lightness = 45;
                 }
@@ -34,15 +195,279 @@
                 ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
                 
                 ctx.fillRect(this.x, this.y, this.width, this.height);
-                ctx.strokeStyle = '#222'; // ブロックの枠線
+                ctx.strokeStyle = '#222'; 
                 ctx.lineWidth = 1;
                 ctx.strokeRect(this.x, this.y, this.width, this.height);
-
-                // HPの数値表示は削除（色で表現するため）
-                // ctx.fillStyle = this.health > 5 ? '#FFF' : '#000'; 
-                // ctx.font = '12px sans-serif';
-                // ctx.textAlign = 'center';
-                // ctx.textBaseline = 'middle';
-                // ctx.fillText(this.health, this.x + this.width / 2, this.y + this.height / 2);
             }
         }
+        
+        // --- ボールのクラス ---
+        class Ball {
+            constructor(startX, startY, initialVY) {
+                this.x = startX;
+                this.y = startY;
+                this.radius = BALL_RADIUS;
+                this.color = '#00FFFF';
+                this.vx = 0;
+                this.vy = initialVY;
+                this.isLaunched = true;
+                this.isControlled = false;
+            }
+            
+            applyForces() {
+                if (this.isControlled) {
+                    if (keys.ArrowLeft)  this.vx -= CONTROL_FORCE;
+                    if (keys.ArrowRight) this.vx += CONTROL_FORCE;
+                }
+                
+                const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                const MAX_SPEED = 15;
+                if (currentSpeed > MAX_SPEED) {
+                    this.vx = (this.vx / currentSpeed) * MAX_SPEED;
+                    this.vy = (this.vy / currentSpeed) * MAX_SPEED;
+                }
+            }
+
+            update() {
+                if (!this.isLaunched) return;
+                this.applyForces();
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                if (this.x - this.radius < 0 || this.x + this.radius > CANVAS_WIDTH) {
+                    this.vx *= -1;
+                    this.x = Math.max(this.radius, Math.min(this.x, CANVAS_WIDTH - this.radius));
+                }
+                if (this.y - this.radius < 0) {
+                    this.vy *= -1;
+                    this.y = this.radius;
+                }
+                
+                if (this.y + this.radius > CANVAS_HEIGHT) {
+                    this.isLaunched = false;
+                }
+            }
+            
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // --- ステージレイアウトと難易度調整 ---
+        function initializeBlocks(stage) {
+            blocks = [];
+            let blockHealth;
+            const HP_BASE = stage * 3; 
+            const DENSITY_FACTOR = (stage === 3) ? 1.0 : 0.8; 
+
+            for (let r = 0; r < BLOCK_ROWS; r++) {
+                for (let c = 0; c < BLOCK_COLS; c++) {
+                    if (Math.random() < DENSITY_FACTOR) { 
+                        blockHealth = HP_BASE + Math.floor(Math.random() * 3) + 1;
+                        
+                        const blockX = c * BLOCK_WIDTH;
+                        const blockY = r * BLOCK_HEIGHT + BLOCK_START_Y;
+                        
+                        blocks.push(new Block(blockX, blockY, '#FFF', blockHealth));
+                    }
+                }
+            }
+        }
+        
+        function checkCollisions() {
+            balls = balls.filter(ball => ball.isLaunched);
+
+            balls.forEach(ball => {
+                if (ball.y < LAUNCH_POS_Y - 30) { 
+                    ball.isControlled = true;
+                }
+                
+                for (let i = blocks.length - 1; i >= 0; i--) {
+                    const block = blocks[i];
+
+                    const closestX = Math.max(block.x, Math.min(ball.x, block.x + block.width));
+                    const closestY = Math.max(block.y, Math.min(ball.y, block.y + block.height));
+                    
+                    const distanceX = ball.x - closestX;
+                    const distanceY = ball.y - closestY;
+                    
+                    if ((distanceX * distanceX + distanceY * distanceY) < (ball.radius * ball.radius)) {
+                        
+                        const penetrationDepthX = ball.radius - Math.abs(distanceX);
+                        const penetrationDepthY = ball.radius - Math.abs(distanceY);
+
+                        if (penetrationDepthX > penetrationDepthY) {
+                            ball.vy *= -1;
+                        } else {
+                            ball.vx *= -1;
+                        }
+                        
+                        block.health--;
+                        score += 10;
+                        scoreElement.textContent = score;
+
+                        if (block.health <= 0) {
+                            blocks.splice(i, 1);
+                        }
+                        
+                        if (blocks.length === 0) {
+                            stageClearTimes[currentStage] = (Date.now() - gameStartTime) / 1000;
+                            
+                            if (currentStage < 3) {
+                                currentStage++;
+                                balls = [];
+                                initializeBlocks(currentStage); 
+                                stageNumElement.textContent = `${currentStage}/3`;
+                            } else {
+                                endGame(true);
+                                return;
+                            }
+                        }
+                        
+                        break; 
+                    }
+                }
+            });
+        }
+        
+        function launchBall() {
+            if (gameState !== 'PLAYING') return;
+            
+            if (balls.filter(b => b.isLaunched).length < 10) { 
+                const newBall = new Ball(LAUNCH_POS_X, LAUNCH_POS_Y, INITIAL_VELOCITY_Y);
+                balls.push(newBall);
+            }
+        }
+
+
+        // --- UI / ランキング処理 ---
+
+        const RANKING_KEY = 'BlockBlastRanking';
+
+        function loadRanking() {
+            const json = localStorage.getItem(RANKING_KEY);
+            return json ? JSON.parse(json) : [];
+        }
+
+        function saveRanking(totalTime) {
+            let rankings = loadRanking();
+            rankings.push(totalTime);
+            rankings.sort((a, b) => a - b); 
+            rankings = rankings.slice(0, 10);
+            localStorage.setItem(RANKING_KEY, JSON.stringify(rankings));
+        }
+
+        function displayRanking(totalTime) {
+            const rankings = loadRanking();
+            rankingList.innerHTML = '';
+            
+            if (rankings.length === 0) {
+                rankingList.innerHTML = '<li>まだ記録がありません。</li>';
+                return;
+            }
+
+            rankings.forEach((time, index) => {
+                const li = document.createElement('li');
+                li.innerHTML = `<span>${index + 1}.</span> <span>${time.toFixed(2)}秒</span>`;
+                rankingList.appendChild(li);
+            });
+        }
+
+        function endGame(win = false) {
+            clearInterval(launchTimer);
+            let totalTime = 0;
+            
+            if (win) {
+                for (let i = 1; i <= 3; i++) {
+                    totalTime += stageClearTimes[i] || 0;
+                }
+                saveRanking(totalTime);
+                endTitle.textContent = `🚀 全ステージクリア！合計タイム: ${totalTime.toFixed(2)}秒`;
+            } else {
+                endTitle.textContent = `ゲームオーバー... スコア: ${score}点`;
+            }
+            
+            gameState = 'ENDED';
+            displayRanking(totalTime);
+            uiOverlay.style.display = 'flex';
+        }
+
+        // --- ゲームループと制御 ---
+        let animationFrameId = null;
+
+        function animate() {
+            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            
+            if (gameState === 'PLAYING') {
+                const elapsed = Date.now() - gameStartTime;
+                timeDisplayElement.textContent = (elapsed / 1000).toFixed(2);
+                
+                // 発射台の描画
+                ctx.fillStyle = '#9370DB'; 
+                ctx.beginPath();
+                ctx.arc(LAUNCH_POS_X, LAUNCH_POS_Y, 20, 0, Math.PI * 2);
+                ctx.fill();
+                
+                blocks.forEach(block => block.draw());
+                balls.forEach(ball => {
+                    if(ball.isLaunched) { 
+                        ball.update();
+                        ball.draw();
+                    }
+                });
+                checkCollisions();
+            }
+
+            animationFrameId = requestAnimationFrame(animate);
+        }
+        
+        function startGame() {
+            score = 0;
+            currentStage = 1;
+            stageClearTimes = {};
+            
+            gameState = 'PLAYING';
+            uiOverlay.style.display = 'none'; // UIを非表示
+
+            gameStartTime = Date.now(); 
+            stageNumElement.textContent = `${currentStage}/3`;
+            timeDisplayElement.textContent = '0.00';
+
+            initializeBlocks(currentStage); 
+            balls = [];
+            scoreElement.textContent = score;
+            
+            clearInterval(launchTimer);
+            launchTimer = setInterval(launchBall, LAUNCH_INTERVAL); 
+
+            if (!animationFrameId) {
+                animate();
+            }
+        }
+        
+        // --- イベントリスナー ---
+        document.getElementById('restart-button').addEventListener('click', startGame);
+        
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                if (gameState === 'PLAYING') keys[e.code] = true;
+                e.preventDefault(); 
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                if (gameState === 'PLAYING') keys[e.code] = false;
+            }
+        });
+
+        // 🚨 修正: 画面ロード時にゲームを即時スタート
+        startGame();
+        animate(); 
+    });
+</script>
+</body>
+</html>
