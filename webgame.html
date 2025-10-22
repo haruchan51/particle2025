@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>プラネット・スリングショット</title>
+    <title>プラネット・コントロール</title>
     <style>
         body {
             margin: 0;
@@ -12,21 +12,21 @@
             justify-content: center;
             align-items: center;
             height: 100vh;
-            background: #000033; /* 暗い宇宙の色 */
+            background: #000033;
             font-family: 'Comic Sans MS', 'Arial Rounded MT Bold', sans-serif;
         }
         #game-container {
             position: relative;
             width: 800px;
             height: 600px;
-            border: 10px solid #9370DB; /* 薄い紫の枠 */
+            border: 10px solid #9370DB;
             border-radius: 20px;
             overflow: hidden;
             box-shadow: 0 0 30px rgba(147, 112, 219, 0.8);
         }
         canvas {
             display: block;
-            background: #00001A; /* 非常に暗い宇宙の背景 */
+            background: #00001A;
         }
         #score-board {
             position: absolute;
@@ -43,14 +43,17 @@
             display: flex;
             gap: 20px;
         }
-        #throw-guide {
+        #controls-info {
             position: absolute;
-            width: 0;
-            height: 0;
-            border-bottom: 4px solid #00FFFF; /* シアン色 */
-            transform-origin: 0 0;
-            pointer-events: none;
-            z-index: 20;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #00FFFF;
+            font-size: 20px;
+            font-weight: bold;
+            background-color: rgba(0, 0, 0, 0.6);
+            padding: 8px 15px;
+            border-radius: 10px;
         }
     </style>
 </head>
@@ -59,9 +62,9 @@
 <div id="game-container">
     <div id="score-board">
         <div>スコア: <span id="score">0</span></div>
-        <div>弾数: <span id="ammo">10</span></div>
+        <div>発射中...</div>
     </div>
-    <div id="throw-guide"></div> 
+    <div id="controls-info">操作: 👈 👉 (方向キーで軌道制御)</div>
     <canvas id="planetSlingshotCanvas"></canvas>
 </div>
 
@@ -69,38 +72,37 @@
     document.addEventListener('DOMContentLoaded', function() {
         const canvas = document.getElementById('planetSlingshotCanvas');
         const ctx = canvas.getContext('2d');
-        const guideElement = document.getElementById('throw-guide');
         const scoreElement = document.getElementById('score');
-        const ammoElement = document.getElementById('ammo');
         
         // --- ゲームの定数 ---
         const CANVAS_WIDTH = 800;
         const CANVAS_HEIGHT = 600;
-        const BALL_RADIUS = 10; // 星の輪っか（衛星）
+        const BALL_RADIUS = 10;
         
         // 物理演算
-        const GRAVITY_BASE = 0.05; // 全体の重力（ほぼ無視できる値）
-        const PLANET_GRAVITY = 0.5; // 惑星の引力の強さ
-        const GRAVITY_RANGE = 150; // 惑星が引力を及ぼす範囲
-        const MAX_THROW_FORCE = 30; // 最大発射速度
-
-        // 発射台
+        const PLANET_GRAVITY_FACTOR = 100; // 惑星の引力の係数（距離の2乗に反比例）
+        const GRAVITY_RANGE = 180; // 惑星が引力を及ぼす範囲を広げる
+        const CONTROL_FORCE = 0.5; // 方向キーによる横方向の制御力
+        const MAX_SPEED = 10; // 速度制限
+        
+        // 発射設定
         const LAUNCH_POS_X = CANVAS_WIDTH / 2;
         const LAUNCH_POS_Y = CANVAS_HEIGHT - 50; 
-        
+        const INITIAL_VELOCITY_Y = -15; // 垂直上向きの初速を確保
+        const LAUNCH_INTERVAL = 1500; // 1.5秒ごとに自動発射
+
         // ブロック（惑星）設定
         const PLANET_RADIUS = 30;
         const NUM_PLANETS = 8;
         
         // ゲームの状態
         let score = 0;
-        let ammo = 10; // 弾数制限を追加
         let gameActive = false; 
         let planets = [];
-        let balls = []; // 衛星
+        let balls = [];
+        let launchTimer;
         
-        let isDragging = false;
-        let currentMousePos = { x: 0, y: 0 }; 
+        let keys = { ArrowLeft: false, ArrowRight: false };
 
         canvas.width = CANVAS_WIDTH;
         canvas.height = CANVAS_HEIGHT;
@@ -113,11 +115,11 @@
                 this.y = y; 
                 this.radius = PLANET_RADIUS; 
                 this.color = color;
-                this.health = 3; // 破壊に必要なヒット数
+                this.health = 3;
                 this.scoreValue = 100;
             }
             draw() {
-                // 重力範囲の描画 (戦略性のため薄く表示)
+                // 重力範囲の描画
                 ctx.strokeStyle = `rgba(150, 150, 255, 0.15)`;
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, GRAVITY_RANGE, 0, Math.PI * 2);
@@ -139,41 +141,53 @@
         }
 
         class Ball {
-            constructor(startX, startY) {
+            constructor(startX, startY, initialVY) {
                 this.x = startX;
                 this.y = startY;
                 this.radius = BALL_RADIUS;
-                this.color = '#00FFFF'; // シアン色の輪っか
+                this.color = '#00FFFF';
                 this.vx = 0;
-                this.vy = 0;
-                this.isLaunched = false;
-                this.hitCount = 0; // 貫通処理用
+                this.vy = initialVY; // 初速設定
+                this.isLaunched = true;
+                this.isControlled = false; // プレイヤーが制御可能か
             }
             
-            applyGravity() {
-                // 全体の重力 (画面下への微弱な引力)
-                this.vy += GRAVITY_BASE; 
-
-                // 惑星の重力
+            applyForces() {
+                // 1. プレイヤーによる制御
+                if (this.isControlled) {
+                    if (keys.ArrowLeft)  this.vx -= CONTROL_FORCE;
+                    if (keys.ArrowRight) this.vx += CONTROL_FORCE;
+                }
+                
+                // 2. 惑星の引力 (F = G * M / r^2)
                 planets.forEach(planet => {
                     const dx = planet.x - this.x;
                     const dy = planet.y - this.y;
                     const distance = Math.sqrt(dx * dx + dy * dy);
-
-                    if (distance < GRAVITY_RANGE && distance > planet.radius) {
-                        const force = PLANET_GRAVITY / (distance * distance); // 距離の2乗に反比例
+                    const safeDistance = Math.max(distance, planet.radius); // 惑星内部での無限大を防ぐ
+                    
+                    if (distance < GRAVITY_RANGE) {
+                        // 距離の2乗に反比例する引力を計算
+                        const force = PLANET_GRAVITY_FACTOR / (safeDistance * safeDistance);
                         const angle = Math.atan2(dy, dx);
                         
                         this.vx += Math.cos(angle) * force;
                         this.vy += Math.sin(angle) * force;
                     }
                 });
+                
+                // 3. 速度制限
+                const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (currentSpeed > MAX_SPEED) {
+                    this.vx = (this.vx / currentSpeed) * MAX_SPEED;
+                    this.vy = (this.vy / currentSpeed) * MAX_SPEED;
+                }
             }
 
             update() {
                 if (!this.isLaunched) return;
                 
-                this.applyGravity(); // 重力を適用
+                this.applyForces();
 
                 this.x += this.vx;
                 this.y += this.vy;
@@ -191,7 +205,6 @@
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
                 ctx.stroke();
 
-                // 中心に小さな星を描画
                 ctx.fillStyle = 'white';
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
@@ -202,35 +215,40 @@
 
         function initializePlanets() {
             planets = []; 
-            const colors = ['#FF4500', '#DAA520', '#4169E1', '#32CD32']; // 赤、金、青、緑
-            for (let i = 0; i < NUM_PLANETS; i++) {
-                // 惑星の配置範囲を画面上部中央に集中
+            const colors = ['#FF4500', '#DAA520', '#4169E1', '#32CD32'];
+            const planetSpacing = PLANET_RADIUS * 4;
+            let attempts = 0;
+            
+            while (planets.length < NUM_PLANETS && attempts < 100) {
                 const x = Math.random() * (CANVAS_WIDTH - 200) + 100;
                 const y = Math.random() * (CANVAS_HEIGHT * 0.6) + 50;
-                const color = colors[i % colors.length];
-                const planet = new Planet(x, y, color);
-                
-                // 惑星の重なりをチェックして再配置（簡単のため）
+                const color = colors[planets.length % colors.length];
                 let isOverlap = false;
+
                 for(const existing of planets) {
                     const dist = Math.sqrt(Math.pow(x - existing.x, 2) + Math.pow(y - existing.y, 2));
-                    if (dist < PLANET_RADIUS * 3) {
+                    if (dist < planetSpacing) {
                         isOverlap = true;
-                        i--; // カウンタを戻して再試行
                         break;
                     }
                 }
                 if (!isOverlap) {
-                    planets.push(planet);
+                    planets.push(new Planet(x, y, color));
                 }
+                attempts++;
             }
         }
         
-        // 🚨 貫通型の衝突判定 🚨
         function checkCollisions() {
-            balls = balls.filter(ball => ball.isLaunched); // 画面外に出たボールを削除
+            // 画面外に出たボールを削除
+            balls = balls.filter(ball => ball.isLaunched);
 
             balls.forEach(ball => {
+                // 発射直後のボールは、まだ制御可能ではありません。
+                if (ball.y < LAUNCH_POS_Y - 5) {
+                    ball.isControlled = true;
+                }
+                
                 for (let i = planets.length - 1; i >= 0; i--) {
                     const planet = planets[i];
 
@@ -241,7 +259,6 @@
                     if (distance < ball.radius + planet.radius) {
                         // 衝突！
                         
-                        // 貫通処理のため、ヒット後にボールの軌道は変えない
                         planet.health--;
                         score += planet.scoreValue;
                         scoreElement.textContent = score;
@@ -250,9 +267,9 @@
                         if (planet.health <= 0) {
                             planets.splice(i, 1);
                         }
-
-                        // 衝突回数を記録し、同じフレームで複数の衝突を防ぐ（単純化）
-                        ball.hitCount++; 
+                        
+                        // 衝突したボールを削除し、次の玉をすぐに発射する
+                        ball.isLaunched = false;
                         
                         // 勝利判定
                         if (planets.length === 0) {
@@ -263,89 +280,16 @@
                 }
             });
         }
-
-        // --- 投擲イベント（スリングショット） ---
-
-        canvas.addEventListener('mousedown', function(event) {
-            if (!gameActive || balls.some(b => b.isLaunched) || ammo <= 0) return; 
-
-            const rect = canvas.getBoundingClientRect();
-            currentMousePos = { 
-                x: event.clientX - rect.left, 
-                y: event.clientY - rect.top 
-            };
-            
-            const distanceToLaunchPos = Math.sqrt(
-                Math.pow(currentMousePos.x - LAUNCH_POS_X, 2) + 
-                Math.pow(currentMousePos.y - LAUNCH_POS_Y, 2)
-            );
-            
-            if (distanceToLaunchPos < 50) { 
-                 isDragging = true;
-            }
-        });
-
-        canvas.addEventListener('mousemove', function(event) {
-            if (!isDragging) return;
-            const rect = canvas.getBoundingClientRect();
-            currentMousePos = { 
-                x: event.clientX - rect.left, 
-                y: event.clientY - rect.top 
-            };
-            updateGuideLine({ x: LAUNCH_POS_X, y: LAUNCH_POS_Y }, currentMousePos);
-        });
-
-        canvas.addEventListener('mouseup', function() {
-            if (!isDragging) return;
-
-            isDragging = false;
-            guideElement.style.width = '0px'; 
-
-            const dx = LAUNCH_POS_X - currentMousePos.x;
-            const dy = LAUNCH_POS_Y - currentMousePos.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            if (distance < 10) return; 
-
-            const force = Math.min(distance / 10, MAX_THROW_FORCE); 
-            
-            const newBall = new Ball(LAUNCH_POS_X, LAUNCH_POS_Y);
-
-            newBall.vx = (dx / distance) * force;
-            newBall.vy = (dy / distance) * force;
-            newBall.isLaunched = true;
-            
-            balls.push(newBall);
-            ammo--;
-            ammoElement.textContent = ammo;
-            
-            // 弾切れチェック
-            if (ammo === 0 && planets.length > 0) {
-                // 最後のボールが画面外に出るまで待つ
-                setTimeout(() => {
-                    if (balls.filter(b => b.isLaunched).length === 0) {
-                        endGame(false);
-                    }
-                }, 1000); 
-            }
-
-            if (!animationFrameId) {
-                animate();
-            }
-        });
         
-        function updateGuideLine(start, end) {
-            const dx = start.x - end.x;
-            const dy = start.y - end.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            const angle = Math.atan2(dy, dx); 
+        // --- 発射ロジック ---
+        function launchBall() {
+            if (!gameActive) return;
             
-            const visualDistance = Math.min(distance, 200); 
-            
-            guideElement.style.left = `${end.x}px`;
-            guideElement.style.top = `${end.y}px`;
-            guideElement.style.width = `${visualDistance}px`;
-            guideElement.style.transform = `rotate(${angle}rad)`;
+            // 画面上に玉が少ない場合のみ発射（画面の混雑を防ぐ）
+            if (balls.filter(b => b.isLaunched).length < 5) { 
+                const newBall = new Ball(LAUNCH_POS_X, LAUNCH_POS_Y, INITIAL_VELOCITY_Y);
+                balls.push(newBall);
+            }
         }
 
 
@@ -363,14 +307,16 @@
             
             planets.forEach(planet => planet.draw());
             balls.forEach(ball => {
-                ball.update();
-                ball.draw();
+                if(ball.isLaunched) {
+                    ball.update();
+                    ball.draw();
+                }
             });
             checkCollisions();
             
             if (gameActive) {
                 animationFrameId = requestAnimationFrame(animate);
-            } else if (planets.length > 0 || ammo === 0) {
+            } else {
                 drawStartScreen(planets.length === 0);
             }
         }
@@ -389,23 +335,24 @@
                 ctx.font = '24px "Comic Sans MS", sans-serif';
                 ctx.fillText(`Enterキーで次の宇宙へ`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 60);
             } else {
-                ctx.fillText(`GAME OVER`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 40);
-                ctx.fillText(`弾切れ！ スコア: ${score}点`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 10);
+                ctx.fillText(`🎮 プラネット・コントロール 🎮`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 40);
                 ctx.font = '24px "Comic Sans MS", sans-serif';
-                ctx.fillText(`Enterキーで再挑戦！`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 60);
+                ctx.fillText(`玉は自動で発射されます。方向キーで軌道を制御！`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 10);
+                ctx.fillText(`Enterキーでゲームスタート！`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 50);
             }
         }
 
         function startGame() {
             if (gameActive) return;
             score = 0;
-            ammo = 10;
             gameActive = true;
             initializePlanets();
             balls = [];
             scoreElement.textContent = score;
-            ammoElement.textContent = ammo;
             
+            clearInterval(launchTimer);
+            launchTimer = setInterval(launchBall, LAUNCH_INTERVAL); // 自動発射開始
+
             if (!animationFrameId) {
                 animate();
             }
@@ -413,15 +360,23 @@
         
         function endGame(win = false) {
             gameActive = false;
+            clearInterval(launchTimer); // 自動発射停止
             drawStartScreen(win);
         }
 
-        // Enterキーでのスタート/再開処理
+        // --- イベントリスナー ---
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                if (!gameActive) {
-                    startGame();
-                }
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                if (gameActive) keys[e.code] = true;
+                e.preventDefault(); 
+            } else if (e.key === 'Enter' && !gameActive) {
+                startGame();
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                if (gameActive) keys[e.code] = false;
             }
         });
 
