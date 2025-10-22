@@ -13,21 +13,21 @@
             align-items: center;
             height: 100vh;
             background: #202020;
-            font-family: 'Hiragino Kaku Gothic Pro', 'Meiryo', sans-serif;
+            font-family: 'Montserrat', sans-serif; /* モダンなフォントに変更 */
             color: white;
         }
         #game-container {
             position: relative;
             width: 800px;
             height: 600px;
-            border: 10px solid #FF69B4;
+            border: 10px solid #FF00AA; /* ネオンピンクのボーダー */
             border-radius: 20px;
             overflow: hidden;
-            box-shadow: 0 0 30px rgba(255, 105, 180, 0.5);
+            box-shadow: 0 0 30px rgba(255, 0, 170, 0.8); /* ネオン効果 */
         }
         canvas {
             display: block;
-            background: #111111;
+            background: #0A0A0A; /* より暗い背景 */
         }
 
         /* --- UI スタイル --- */
@@ -51,111 +51,78 @@
             top: 10px;
             left: 50%;
             transform: translateX(-50%);
-            background-color: rgba(255, 255, 255, 0.9);
+            background-color: rgba(0, 0, 0, 0.8);
             padding: 8px 15px;
             border-radius: 10px;
             font-size: 20px;
             font-weight: bold;
-            color: #FF69B4;
+            color: #39FF14; /* ネオングリーン */
             z-index: 10;
             display: flex; 
             gap: 30px;
             align-items: center;
+            border: 1px solid #39FF14;
         }
         
         /* 共通スタイル */
         .title {
-            font-size: 48px;
+            font-size: 60px; /* タイトルを大きく */
             color: #FFD700;
+            text-shadow: 0 0 10px #FFD700; /* ゴールドのネオン効果 */
             margin-bottom: 40px;
         }
         .menu-button {
-            padding: 15px 30px;
-            margin: 10px;
-            font-size: 24px;
+            padding: 15px 40px;
+            margin: 15px;
+            font-size: 26px;
             font-weight: bold;
-            color: #202020;
-            background-color: #00FFFF;
+            color: #0A0A0A;
+            background-color: #00FFFF; /* シアン */
             border: none;
             border-radius: 5px;
             cursor: pointer;
-            box-shadow: 0 4px #00BFFF;
-            transition: background-color 0.1s;
+            box-shadow: 0 0 15px #00FFFF, 0 4px #00BFFF;
+            transition: all 0.1s;
         }
         .menu-button:hover {
              background-color: #00BFFF;
+             transform: translateY(-2px);
+             box-shadow: 0 0 20px #00FFFF, 0 6px #00BFFF;
         }
         #ranking-list, #home-ranking-list {
             list-style: none;
             padding: 0;
             width: 80%;
-            max-width: 400px;
+            max-width: 450px;
             margin-top: 20px;
             text-align: left;
         }
         #ranking-list li, #home-ranking-list li {
-            background-color: #333;
+            background-color: rgba(255, 255, 255, 0.1);
             margin-bottom: 8px;
-            padding: 10px;
-            border-radius: 4px;
+            padding: 12px;
+            border-radius: 6px;
             font-size: 18px;
             display: flex;
             justify-content: space-between;
-        }
-
-        /* クイズ画面 */
-        #quiz-screen {
-            display: none;
-            text-align: center;
-            width: 70%;
-            background: #333;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-        }
-        #quiz-question {
-            font-size: 24px;
-            margin-bottom: 20px;
-            color: #FFD700;
-        }
-        .quiz-option {
-            width: 100%;
-            padding: 12px;
-            margin: 8px 0;
-            font-size: 18px;
-            font-weight: bold;
-            color: #202020;
-            background-color: #00FFFF;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background-color 0.1s;
-        }
-        .result-text.correct {
-            color: #39FF14;
-        }
-        .result-text.incorrect {
-            color: #FF3131;
-        }
-        #continue-button {
-            margin-top: 30px;
-            padding: 15px 30px;
-            font-size: 24px;
-            background-color: #FF69B4;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-
-        /* ホーム/終了画面 */
-        #home-screen, #end-screen {
-             text-align: center;
-             display: none;
+            border-left: 5px solid #FF00AA;
         }
         #home-screen h3 {
             margin-top: 50px;
-            color: #00FFFF;
+            color: #FF00AA;
+            text-shadow: 0 0 5px #FF00AA;
+            font-size: 24px;
+        }
+
+        /* クイズ画面 (微修正) */
+        #quiz-screen {
+            background: #1A1A1A;
+            border: 2px solid #39FF14;
+            box-shadow: 0 0 15px rgba(57, 255, 20, 0.5);
+        }
+        #quiz-question {
+            color: #FF00AA;
+            text-shadow: 0 0 5px #FF00AA;
         }
 
     </style>
@@ -167,16 +134,16 @@
         <div>スコア: <span id="score">0</span></div>
         <div class="stage-label">ステージ: <span id="stage-num">1</span>/3</div>
         <div class="time-label">時間: <span id="time-display">0.00</span>秒</div>
-        <button id="home-button" class="menu-button" style="padding: 5px 10px; font-size: 16px; margin: 0; background-color: #FFD700; color: #202020;">ホームへ</button>
+        <button id="home-button" class="menu-button" style="padding: 5px 10px; font-size: 16px; margin: 0; background-color: #FFD700; color: #202020; box-shadow: 0 0 10px #FFD700, 0 4px #FFA500;">ホームへ</button>
     </div>
 
     <canvas id="blockBlastCanvas"></canvas>
 
     <div id="ui-overlay">
         <div id="home-screen">
-            <div class="title">ブロック・ブラスト・アタック</div>
-            <button class="menu-button" id="start-game-button">ゲーム開始</button>
-            <h3>🏆 総合クリアタイムランキング 🏆</h3>
+            <div class="title">BLOCK BLAST ATTACK</div>
+            <button class="menu-button" id="start-game-button">START GAME</button>
+            <h3>🏆 CLEARED TIME RANKING 🏆</h3>
             <ol id="home-ranking-list"></ol>
         </div>
 
@@ -185,7 +152,7 @@
             <p id="quiz-question"></p>
             <div id="quiz-options"></div>
             <p id="quiz-result-message" class="result-text"></p>
-            <button id="continue-button" style="display: none;">ゲーム再開</button>
+            <button id="continue-button" class="menu-button" style="display: none; background-color: #FF00AA; color: white; box-shadow: 0 0 15px #FF00AA, 0 4px #D0008D;">ゲーム再開</button>
         </div>
 
         <div id="end-screen">
@@ -236,8 +203,13 @@
         const BLOCK_WIDTH = CANVAS_WIDTH / BLOCK_COLS;
         const BLOCK_HEIGHT = 20;
         const BLOCK_START_Y = 50; 
-        const LAUNCH_POS_X = CANVAS_WIDTH / 2;
         const LAUNCH_POS_Y = CANVAS_HEIGHT - 50; 
+        
+        // --- パドル自動移動用の状態 ---
+        let paddleX = CANVAS_WIDTH / 2; // 発射台の中心X座標
+        let paddleVx = 3; // 🚨 追加: 発射台の速度
+        const PADDLE_MOVEMENT_RANGE = 200; // 発射台の移動範囲の半径
+        const PADDLE_CENTER_X = CANVAS_WIDTH / 2;
         
         // --- ゲームの状態 ---
         let score = 0;
@@ -332,7 +304,7 @@
             }
         }
         
-        // --- ボールのクラス ---
+        // --- ボールのクラス (変更なし) ---
         class Ball {
             constructor(startX, startY, initialVY) {
                 this.x = startX;
@@ -342,11 +314,11 @@
                 this.vx = 0;
                 this.vy = initialVY;
                 this.isLaunched = true;
-                this.isControlled = true; // 🚨 変更: 初期は制御可能
+                this.isControlled = true; 
             }
             
             applyForces() {
-                // 🚨 修正: 制御可能な間だけ、プレイヤーの操作（矢印キー）を受け付ける
+                // 制御可能な間は、発射台に追従するのではなく、プレイヤーの操作（矢印キー）を受け付ける
                 if (this.isControlled) {
                     if (keys.ArrowLeft)  this.vx -= CONTROL_FORCE;
                     if (keys.ArrowRight) this.vx += CONTROL_FORCE;
@@ -362,8 +334,6 @@
 
             update() {
                 if (!this.isLaunched) return;
-                
-                // 🚨 削除: 発射台から離れたら制御無効にするロジックは削除
                 
                 this.applyForces();
                 this.x += this.vx;
@@ -414,11 +384,30 @@
             }
         }
         
+        // 🚨 追加: 発射台の自動移動ロジック
+        function updatePaddlePosition() {
+            if (gameState !== 'PLAYING') return;
+
+            paddleX += paddleVx;
+            
+            // 移動範囲の境界チェック (中心からPADDLE_MOVEMENT_RANGEの範囲)
+            const minX = PADDLE_CENTER_X - PADDLE_MOVEMENT_RANGE + currentPaddleWidth;
+            const maxX = PADDER_CENTER_X + PADDLE_MOVEMENT_RANGE - currentPaddleWidth;
+
+            if (paddleX - currentPaddleWidth < minX || paddleX + currentPaddleWidth > maxX) {
+                paddleVx *= -1; 
+                // 境界から外れないように調整
+                if (paddleX - currentPaddleWidth < minX) paddleX = minX + currentPaddleWidth;
+                if (paddleX + currentPaddleWidth > maxX) paddleX = maxX - currentPaddleWidth;
+            }
+        }
+
         function checkCollisions() {
             balls = balls.filter(ball => ball.isLaunched);
 
             balls.forEach(ball => {
                 
+                // 衝突チェック
                 for (let i = blocks.length - 1; i >= 0; i--) {
                     const block = blocks[i];
 
@@ -480,7 +469,8 @@
             if (gameState !== 'PLAYING') return;
             
             if (balls.filter(b => b.isLaunched).length < 10) { 
-                const newBall = new Ball(LAUNCH_POS_X, LAUNCH_POS_Y, INITIAL_VELOCITY_Y * ballSpeedMultiplier);
+                // 🚨 修正: ボールの初期位置を現在のpaddleXに合わせる
+                const newBall = new Ball(paddleX, LAUNCH_POS_Y, INITIAL_VELOCITY_Y * ballSpeedMultiplier);
                 if (isPenetrating) {
                     newBall.color = '#FFD700'; 
                     isPenetrating = false; 
@@ -604,6 +594,7 @@
             initializeBlocks(currentStage); 
             balls = [];
             stageNumElement.textContent = `${currentStage}/3`;
+            paddleX = CANVAS_WIDTH / 2; // パドルを中央に戻す
 
             gameState = 'PLAYING'; 
             
@@ -632,18 +623,18 @@
             listElement.innerHTML = '';
             
             if (rankings.length === 0) {
-                listElement.innerHTML = '<li>まだ記録がありません。</li>';
+                listElement.innerHTML = '<li>No records yet.</li>';
                 return;
             }
 
             rankings.forEach((time, index) => {
                 const li = document.createElement('li');
-                li.innerHTML = `<span>${index + 1}.</span> <span>${time.toFixed(2)}秒</span>`;
+                li.innerHTML = `<span>${index + 1}.</span> <span>${time.toFixed(2)}s</span>`;
                 listElement.appendChild(li);
             });
         }
         
-        // --- 🏆 ホーム画面機能 (変更なし) ---
+        // --- 🏆 ホーム画面機能 ---
         function showHome() {
             gameState = 'HOME';
             uiOverlay.style.display = 'flex';
@@ -664,7 +655,8 @@
             ballSpeedMultiplier = 1.0;
             isPenetrating = false;
             currentPaddleWidth = DEFAULT_PADDLE_WIDTH;
-            
+            paddleX = CANVAS_WIDTH / 2; // 中央から開始
+
             homeScreen.style.display = 'none'; 
 
             gameStartTime = Date.now(); 
@@ -686,9 +678,9 @@
                     totalTime += stageClearTimes[i] || 0;
                 }
                 saveRanking(totalTime);
-                endTitle.textContent = `🚀 全ステージクリア！合計タイム: ${totalTime.toFixed(2)}秒`;
+                endTitle.textContent = `🚀 STAGE CLEAR! TOTAL TIME: ${totalTime.toFixed(2)}s`;
             } else {
-                endTitle.textContent = `ゲームオーバー... スコア: ${score}点`;
+                endTitle.textContent = `GAME OVER... SCORE: ${score} points`;
             }
             
             gameState = 'ENDED';
@@ -699,20 +691,23 @@
             uiOverlay.style.display = 'flex';
         }
 
-        // --- ゲームループと制御 (変更なし) ---
+        // --- ゲームループと制御 ---
         let animationFrameId = null;
 
         function animate() {
             ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
             
             if (gameState === 'PLAYING') {
+                updatePaddlePosition(); // 🚨 実行: パドルを自動で動かす
+
                 const elapsed = Date.now() - gameStartTime;
                 timeDisplayElement.textContent = (elapsed / 1000).toFixed(2);
                 
                 // 発射台（パドル）の描画
                 ctx.fillStyle = '#9370DB'; 
                 ctx.beginPath();
-                ctx.arc(LAUNCH_POS_X, LAUNCH_POS_Y, currentPaddleWidth, 0, Math.PI * 2); 
+                // 🚨 修正: paddleXを使用
+                ctx.arc(paddleX, LAUNCH_POS_Y, currentPaddleWidth, 0, Math.PI * 2); 
                 ctx.fill();
                 
                 blocks.forEach(block => block.draw());
@@ -728,12 +723,13 @@
             animationFrameId = requestAnimationFrame(animate);
         }
         
-        // --- イベントリスナー (変更なし) ---
+        // --- イベントリスナー ---
         document.getElementById('restart-button').addEventListener('click', showHome); 
         startGameButton.addEventListener('click', startGame);                       
         continueButton.addEventListener('click', continueGame);
         homeButton.addEventListener('click', showHome);                             
 
+        // 🚨 修正: 発射台が自動で動くため、左右のキー操作はボールの微調整にのみ影響する
         document.addEventListener('keydown', (e) => {
             if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
                 if (gameState === 'PLAYING') keys[e.code] = true;
