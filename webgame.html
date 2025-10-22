@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ウォーターゲーム 水圧発射＆微調整</title>
+    <title>ゆめいろブロック崩し</title>
     <style>
         body {
             margin: 0;
@@ -12,42 +12,21 @@
             justify-content: center;
             align-items: center;
             height: 100vh;
-            background-color: #004488;
-            font-family: 'Hiragino Kaku Gothic Pro', 'Meiryo', sans-serif;
+            background: linear-gradient(to bottom, #8A2BE2, #ADD8E6); /* 藤色から水色のグラデーション */
+            font-family: 'Comic Sans MS', 'Arial Rounded MT Bold', sans-serif;
         }
         #game-container {
             position: relative;
             width: 800px;
-            height: 500px;
-            border: 10px solid #FF69B4; 
-            border-radius: 40px;
+            height: 600px;
+            border: 10px solid #FF69B4; /* ピンクの枠 */
+            border-radius: 20px;
             overflow: hidden;
             box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
-            background: #4682B4; 
         }
         canvas {
             display: block;
-            background: linear-gradient(to top, #4682B4, #87CEEB); 
-        }
-        #game-controls {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            height: 100px; 
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background-color: rgba(255, 255, 255, 0.2);
-            gap: 20px;
-        }
-        .control-info {
-            font-size: 18px;
-            font-weight: bold;
-            color: white;
-            padding: 10px;
-            background-color: rgba(0, 0, 0, 0.5);
-            border-radius: 8px;
+            background: linear-gradient(to top, #E0FFFF, #B0E0E6); /* 明るい空色グラデーション */
         }
         #score-board {
             position: absolute;
@@ -57,294 +36,233 @@
             background-color: rgba(255, 255, 255, 0.9);
             padding: 8px 15px;
             border-radius: 10px;
-            font-size: 20px;
+            font-size: 24px;
             font-weight: bold;
-            color: #333;
+            color: #FF69B4;
             z-index: 10;
         }
-        #dolphin {
+        #throw-guide {
+            /* スリングショットのガイドライン */
             position: absolute;
-            top: 10px;
-            right: 10px;
-            color: #FFC0CB;
-            font-size: 30px;
-            transform: rotate(20deg);
+            width: 0;
+            height: 0;
+            border-bottom: 4px solid #FFD700; /* 金色 */
+            transform-origin: 0 0;
+            pointer-events: none;
+            z-index: 20;
         }
     </style>
 </head>
 <body>
 
 <div id="game-container">
-    <div id="dolphin">🐬</div>
     <div id="score-board">スコア: <span id="score">0</span></div>
-    <canvas id="waterGameCanvas"></canvas>
-    <div id="game-controls">
-        <div class="control-info">発射: スペースキー (長押しで連続発射)</div>
-        <div class="control-info">微調整: 👈 👉 (方向キー)</div>
-    </div>
+    <div id="throw-guide"></div> 
+    <canvas id="blockBreakerCanvas"></canvas>
 </div>
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        const canvas = document.getElementById('waterGameCanvas');
+        const canvas = document.getElementById('blockBreakerCanvas');
         const ctx = canvas.getContext('2d');
+        const guideElement = document.getElementById('throw-guide');
         const scoreElement = document.getElementById('score');
-
+        
         // --- ゲームの定数 ---
         const CANVAS_WIDTH = 800;
-        const CANVAS_HEIGHT = 400; 
-        const RING_RADIUS = 15;
-        const NUM_RINGS = 8;
-        const NUM_POSTS = 4;
+        const CANVAS_HEIGHT = 600;
+        const BALL_RADIUS = 15;
         
-        // 🚨 修正点 1: 水中感アップのための物理演算 🚨
-        const GRAVITY = 0.1; // 重力を大幅に弱く
-        const WATER_DRAG = 0.99; // 水の抵抗は高め
-        const LAUNCH_FORCE = -8; // スペースキーを押したときの垂直上向きの力
-        const ADJUST_FORCE = 0.2; // 方向キーを押したときの横方向の微調整の力
-        const MAX_ADJUST_SPEED = 1; // 横移動の最大速度を非常に遅く制限
+        // 物理演算
+        const GRAVITY = 0.5; // 重力
+        const AIR_DRAG = 0.999; // 空気抵抗
+        const MAX_THROW_FORCE = 40; // 最大発射速度
 
-        // ターゲット (棒) の設定
-        const POST_HEIGHT = 70;
-        const POST_WIDTH = 5;
+        // 発射台 (スリングショット)
+        const LAUNCH_POS_X = CANVAS_WIDTH / 2;
+        const LAUNCH_POS_Y = CANVAS_HEIGHT - 50; 
+        
+        // ブロック設定
+        const BLOCK_ROWS = 5;
+        const BLOCK_COLS = 8;
+        const BLOCK_WIDTH = (CANVAS_WIDTH / BLOCK_COLS) - 10;
+        const BLOCK_HEIGHT = 30;
+        const BLOCK_START_Y = 50; 
+        const BLOCK_GAP = 10;
 
         // ゲームの状態
         let score = 0;
-        let gameActive = false;
-        let rings = [];
-        let posts = [];
-        
-        let keys = { Space: false, ArrowLeft: false, ArrowRight: false };
+        let gameActive = false; 
+        let blocks = [];
+        let balls = []; // 輪っかではなく「星の輪っかボール」として扱う
+        let lives = 3;
+
+        let isDragging = false;
+        let currentMousePos = { x: 0, y: 0 }; 
 
         canvas.width = CANVAS_WIDTH;
         canvas.height = CANVAS_HEIGHT;
 
-        // --- 描画関数 ---
+        // --- ゲーム要素のクラス定義 ---
 
-        class Ring {
-            constructor(startX, startY, color) {
-                this.x = startX;
-                this.y = startY;
-                this.radius = RING_RADIUS;
-                this.color = color;
-                this.vx = 0; // 横方向の速度
-                this.vy = 0; // 垂直速度
-                this.isScored = false;
-                this.isLaunched = false; // 発射されたかどうか
-            }
-
-            update() {
-                if (this.isScored) return;
-
-                // 🚨 修正点 2: 操作ロジックの変更 🚨
-
-                // 1. スペースキーによる垂直発射 (長押しで連続発射)
-                if (keys.Space) {
-                    this.vy += LAUNCH_FORCE; 
-                    this.isLaunched = true;
-                }
-                
-                // 2. 重力 (沈む力)
-                this.vy += GRAVITY;
-
-                // 3. 方向キーによる横方向の微調整 (発射後にのみ有効)
-                if (this.isLaunched) {
-                    if (keys.ArrowLeft)  this.vx -= ADJUST_FORCE;
-                    if (keys.ArrowRight) this.vx += ADJUST_FORCE;
-                }
-                
-                // 4. 水の抵抗 (速度を減衰させる)
-                this.vy *= WATER_DRAG; 
-                this.vx *= WATER_DRAG; 
-                
-                // 5. 横移動の最大速度制限
-                this.vx = Math.min(Math.max(this.vx, -MAX_ADJUST_SPEED), MAX_ADJUST_SPEED);
-
-                this.x += this.vx;
-                this.y += this.vy;
-
-                // 画面端のバウンド処理
-                if (this.y - this.radius < 0) {
-                    this.y = this.radius;
-                    this.vy *= -0.5;
-                }
-                if (this.y + this.radius > CANVAS_HEIGHT) {
-                    this.y = CANVAS_HEIGHT - this.radius;
-                    this.vy *= -0.5;
-                }
-                if (this.x - this.radius < 0) {
-                    this.x = this.radius;
-                    this.vx *= -0.5;
-                }
-                if (this.x + this.radius > CANVAS_WIDTH) {
-                    this.x = CANVAS_WIDTH - this.radius;
-                    this.vx *= -0.5;
-                }
-            }
-
-            draw() {
-                ctx.strokeStyle = this.color;
-                ctx.lineWidth = 5;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                ctx.stroke();
-
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-                ctx.beginPath();
-                ctx.arc(this.x + this.radius * 0.5, this.y - this.radius * 0.5, this.radius * 0.3, 0, Math.PI * 2);
-                ctx.fill();
-            }
-        }
-
-        class Post {
+        class Block {
             constructor(x, y, color) {
                 this.x = x; 
                 this.y = y; 
+                this.width = BLOCK_WIDTH;
+                this.height = BLOCK_HEIGHT; 
                 this.color = color;
-                this.scoreValue = 1;
+                this.hits = 1; // 1回で破壊
             }
-
             draw() {
+                // ゆめいろブロックの描画
                 ctx.fillStyle = this.color;
-                ctx.fillRect(this.x - POST_WIDTH / 2, this.y - POST_HEIGHT, POST_WIDTH, POST_HEIGHT);
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(this.x, this.y, this.width, this.height);
+            }
+        }
 
-                ctx.fillStyle = '#FF7F50'; 
+        class Ball {
+            constructor(startX, startY) {
+                this.x = startX;
+                this.y = startY;
+                this.radius = BALL_RADIUS;
+                this.color = '#FFD700'; // 金色の星
+                this.vx = 0;
+                this.vy = 0;
+                this.isLaunched = false;
+            }
+            
+            update() {
+                if (!this.isLaunched) return;
+                
+                this.vx *= AIR_DRAG; 
+                this.vy *= AIR_DRAG;
+                this.vy += GRAVITY; // 重力の影響
+
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // 壁の反射
+                if (this.x - this.radius < 0 || this.x + this.radius > CANVAS_WIDTH) {
+                    this.vx *= -1; 
+                    this.x = Math.max(this.radius, Math.min(this.x, CANVAS_WIDTH - this.radius));
+                }
+                if (this.y - this.radius < 0) {
+                    this.vy *= -1; 
+                    this.y = this.radius;
+                }
+                
+                // 画面下端 (ミス判定)
+                if (this.y + this.radius > CANVAS_HEIGHT) {
+                    this.isLaunched = false;
+                    lives--;
+                    if (lives <= 0) {
+                        endGame();
+                    } else {
+                        // 次の輪っかの準備 (発射台に戻す)
+                        this.x = LAUNCH_POS_X;
+                        this.y = LAUNCH_POS_Y;
+                        this.vx = 0;
+                        this.vy = 0;
+                    }
+                }
+            }
+            
+            draw() {
+                // 星型を描画（シンプルに円で代用し、色とハイライトで表現）
+                ctx.fillStyle = this.color;
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, 15, 0, Math.PI * 2);
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // 輪郭として輪投げの「輪」を描画
+                ctx.strokeStyle = '#FF69B4'; 
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // ハイライト
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                ctx.beginPath();
+                ctx.arc(this.x - 5, this.y - 5, 5, 0, Math.PI * 2);
                 ctx.fill();
             }
         }
+        // ------------------------------------------
+
+        function initializeBlocks() {
+            blocks = []; 
+            const colors = ['#FFC0CB', '#FFD700', '#ADFF2F', '#00FFFF', '#FF6347']; // ゆめいろカラー
+            for (let r = 0; r < BLOCK_ROWS; r++) {
+                for (let c = 0; c < BLOCK_COLS; c++) {
+                    const blockX = c * (BLOCK_WIDTH + BLOCK_GAP) + BLOCK_GAP / 2;
+                    const blockY = r * (BLOCK_HEIGHT + BLOCK_GAP) + BLOCK_START_Y;
+                    blocks.push(new Block(blockX, blockY, colors[r % colors.length]));
+                }
+            }
+        }
         
-        // --- 初期化 ---
-
-        function initializeGame() {
-            // 輪の初期化 (左下に集める)
-            rings = [];
-            const ringColors = ['#FFD700', '#FF6347', '#00FFFF', '#ADFF2F'];
-            for (let i = 0; i < NUM_RINGS; i++) {
-                rings.push(new Ring(
-                    50 + (i % 4) * (RING_RADIUS * 0.5), 
-                    CANVAS_HEIGHT - 30 - Math.floor(i / 4) * (RING_RADIUS * 2 + 5), 
-                    ringColors[i % ringColors.length]
-                ));
-            }
-
-            // 棒の初期化 (右側に配置)
-            posts = [];
-            for (let i = 0; i < NUM_POSTS; i++) {
-                const x = CANVAS_WIDTH - 150 - i * 150;
-                const y = CANVAS_HEIGHT - 30 + Math.sin(i) * 15; 
-                posts.push(new Post(x, y, '#FFFF00'));
-            }
-        }
-
-        // --- 衝突判定 ---
-
         function checkCollisions() {
-            rings.forEach(ring => {
-                if (ring.isScored) return;
+            balls.forEach(ball => {
+                if (!ball.isLaunched) return;
+                
+                for (let i = blocks.length - 1; i >= 0; i--) {
+                    const block = blocks[i];
 
-                posts.forEach(post => {
-                    const postTopY = post.y - POST_HEIGHT;
+                    // ブロックとボールのAABB衝突検出（簡易版）
+                    const closestX = Math.max(block.x, Math.min(ball.x, block.x + block.width));
+                    const closestY = Math.max(block.y, Math.min(ball.y, block.y + block.height));
                     
-                    const isCenteredX = Math.abs(ring.x - post.x) < POST_WIDTH;
-                    const isInsidePostY = ring.y - ring.radius > postTopY && ring.y + ring.radius < post.y;
+                    const distanceX = ball.x - closestX;
+                    const distanceY = ball.y - closestY;
+                    
+                    if ((distanceX * distanceX + distanceY * distanceY) < (ball.radius * ball.radius)) {
+                        // 衝突！
+                        
+                        // 速度の反転 (衝突位置に応じて)
+                        const penetrationDepthX = ball.radius - Math.abs(distanceX);
+                        const penetrationDepthY = ball.radius - Math.abs(distanceY);
 
-                    if (isCenteredX && isInsidePostY) {
-                        score += post.scoreValue;
+                        if (penetrationDepthX > penetrationDepthY) {
+                            // 上下衝突
+                            ball.vy *= -1;
+                        } else {
+                            // 左右衝突
+                            ball.vx *= -1;
+                        }
+
+                        // ブロック破壊
+                        blocks.splice(i, 1);
+                        score += 10;
                         scoreElement.textContent = score;
-                        ring.isScored = true;
+
+                        // 勝利判定
+                        if (blocks.length === 0) {
+                            endGame(true);
+                        }
                         
-                        ring.x = post.x;
-                        ring.y = post.y - POST_HEIGHT / 2;
-                        ring.vx = 0; 
-                        ring.vy = 0;
-                        
-                        ring.draw = function() { 
-                            ctx.strokeStyle = '#90EE90';
-                            ctx.lineWidth = 5;
-                            ctx.beginPath();
-                            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                            ctx.stroke();
-                        };
+                        break;
                     }
-                });
+                }
             });
         }
 
-        // --- ゲームループと制御 ---
+        // --- 投擲イベント ---
 
-        function drawSeaCreatures() {
-            ctx.fillStyle = '#66CCFF'; 
-            ctx.font = '24px sans-serif';
-            ctx.fillText('🐠', 500, 150);
-            ctx.fillText('🦀', 250, 350);
-            ctx.fillText('🐙', 650, 200);
+        canvas.addEventListener('mousedown', function(event) {
+            if (!gameActive || (balls.length > 0 && balls[0].isLaunched)) return; 
 
-            ctx.fillStyle = '#F0E68C'; 
-            ctx.fillRect(0, CANVAS_HEIGHT - 20, CANVAS_WIDTH, 20);
-        }
-
-        function drawGame() {
-            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            const rect = canvas.getBoundingClientRect();
+            currentMousePos = { 
+                x: event.clientX - rect.left, 
+                y: event.clientY - rect.top 
+            };
             
-            drawSeaCreatures();
-
-            posts.forEach(post => post.draw());
-            rings.forEach(ring => {
-                ring.update();
-                ring.draw();
-            });
+            const distanceToLaunchPos = Math.sqrt(
+                Math.pow(currentMousePos.x - LAUNCH_POS_X, 2) + 
+                Math.pow(currentMousePos.y - LAUNCH_POS_Y, 2)
+            );
             
-            checkCollisions();
-
-            if (!gameActive) {
-                 ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-                 ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-                 ctx.fillStyle = 'white';
-                 ctx.font = '40px "Comic Sans MS", "Arial Rounded MT Bold", sans-serif'; 
-                 ctx.textAlign = 'center';
-                 ctx.fillText(`🌊 ウォーターゲーム 🌊`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 40);
-                 ctx.font = '24px "Comic Sans MS", "Arial Rounded MT Bold", sans-serif';
-                 ctx.fillText(`スペースキーで発射、左右キーで微調整！`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 10);
-                 ctx.fillText(`Enterキーを押してゲームスタート！`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 50);
-            }
-
-            requestAnimationFrame(drawGame);
-        }
-
-        function startGame() {
-            if (gameActive) return;
-            gameActive = true;
-            score = 0;
-            scoreElement.textContent = score;
-            initializeGame();
-        }
-
-        // --- イベントリスナー (キー操作) ---
-
-        document.addEventListener('keydown', (e) => {
-            // 発射/微調整
-            if (gameActive && (e.code === 'Space' || e.code === 'ArrowLeft' || e.code === 'ArrowRight')) {
-                keys[e.code] = true;
-                e.preventDefault(); 
-            }
-            // スタート
-            else if (e.key === 'Enter' && !gameActive) {
-                startGame();
-            }
-        });
-
-        document.addEventListener('keyup', (e) => {
-            if (gameActive && (e.code === 'Space' || e.code === 'ArrowLeft' || e.code === 'ArrowRight')) {
-                keys[e.code] = false;
-            }
-        });
-
-        // 初期化と描画開始
-        initializeGame();
-        drawGame();
-    });
-</script>
-</body>
-</html>
+            // 発射台付近でのみドラッグ開始
