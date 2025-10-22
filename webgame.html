@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>プラネット・コントロール タイムアタック</title>
+    <title>ブロック・ブラスト・アタック</title>
     <style>
         body {
             margin: 0;
@@ -12,24 +12,43 @@
             justify-content: center;
             align-items: center;
             height: 100vh;
-            background: #000033;
-            font-family: 'Comic Sans MS', 'Arial Rounded MT Bold', sans-serif;
+            background: #202020; /* ダークグレーの背景 */
+            font-family: 'Hiragino Kaku Gothic Pro', 'Meiryo', sans-serif;
+            color: white;
         }
         #game-container {
             position: relative;
             width: 800px;
             height: 600px;
-            border: 10px solid #9370DB;
+            border: 10px solid #FF69B4;
             border-radius: 20px;
             overflow: hidden;
-            box-shadow: 0 0 30px rgba(147, 112, 219, 0.8);
+            box-shadow: 0 0 30px rgba(255, 105, 180, 0.5);
         }
         canvas {
             display: block;
-            background: #00001A;
+            background: #111111; /* 非常に暗いゲーム背景 */
         }
-        /* スコア、ステージ、時間を表示するUI */
-        #score-board {
+
+        /* --- UI スタイル --- */
+        #ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 100;
+            flex-direction: column;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        /* ゲーム中UI */
+        #game-info {
             position: absolute;
             top: 10px;
             left: 50%;
@@ -44,45 +63,102 @@
             display: flex;
             gap: 30px;
         }
-        #controls-info {
-            position: absolute;
-            bottom: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            color: #00FFFF;
-            font-size: 20px;
+        
+        /* ホーム画面/ランキング */
+        #home-screen, #rank-screen {
+            display: none;
+            text-align: center;
+        }
+        .title {
+            font-size: 48px;
+            color: #FFD700;
+            margin-bottom: 40px;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.7);
+        }
+        .menu-button {
+            padding: 15px 30px;
+            margin: 10px;
+            font-size: 24px;
             font-weight: bold;
-            background-color: rgba(0, 0, 0, 0.6);
-            padding: 8px 15px;
-            border-radius: 10px;
+            color: #202020;
+            background-color: #00FFFF;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 4px #00BFFF;
+            transition: all 0.1s;
         }
-        .time-label {
-            color: #000000;
+        .menu-button:hover {
+            background-color: #00BFFF;
         }
-        .stage-label {
-            color: #4169E1;
+        .menu-button:active {
+            box-shadow: 0 1px #00BFFF;
+            transform: translateY(3px);
+        }
+
+        /* ランキング表 */
+        #ranking-list {
+            list-style: none;
+            padding: 0;
+            width: 80%;
+            max-width: 400px;
+            margin-top: 20px;
+            text-align: left;
+        }
+        #ranking-list li {
+            background-color: #333;
+            margin-bottom: 8px;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 18px;
+            display: flex;
+            justify-content: space-between;
+        }
+        #ranking-list li:first-child {
+            background-color: #FFD700;
+            color: #202020;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
 
 <div id="game-container">
-    <div id="score-board">
+    <div id="game-info" style="display: none;">
         <div>スコア: <span id="score">0</span></div>
         <div class="stage-label">ステージ: <span id="stage-num">1</span>/3</div>
         <div class="time-label">時間: <span id="time-display">0.00</span>秒</div>
     </div>
-    <div id="controls-info">操作: 👈 👉 (方向キーで軌道制御)</div>
-    <canvas id="planetSlingshotCanvas"></canvas>
+
+    <canvas id="blockBlastCanvas"></canvas>
+
+    <div id="ui-overlay">
+        <div id="home-screen">
+            <div class="title">🧱 ブロック・ブラスト・アタック 💥</div>
+            <button class="menu-button" id="start-button">ゲームスタート</button>
+            <button class="menu-button" id="rank-button">ランキングを見る</button>
+        </div>
+
+        <div id="rank-screen">
+            <div class="title" style="font-size: 36px;">🏆 タイムアタックランキング 🏆</div>
+            <ol id="ranking-list"></ol>
+            <button class="menu-button" id="back-button">ホームに戻る</button>
+        </div>
+    </div>
 </div>
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        const canvas = document.getElementById('planetSlingshotCanvas');
+        const canvas = document.getElementById('blockBlastCanvas');
         const ctx = canvas.getContext('2d');
         const scoreElement = document.getElementById('score');
         const stageNumElement = document.getElementById('stage-num');
         const timeDisplayElement = document.getElementById('time-display');
+        const uiOverlay = document.getElementById('ui-overlay');
+        const gameInfo = document.getElementById('game-info');
+        const homeScreen = document.getElementById('home-screen');
+        const rankScreen = document.getElementById('rank-screen');
+        const rankingList = document.getElementById('ranking-list');
         
         // --- ゲームの定数 ---
         const CANVAS_WIDTH = 800;
@@ -90,61 +166,65 @@
         const BALL_RADIUS = 10;
         
         // 物理演算
-        const PLANET_GRAVITY_FACTOR = 100;
-        const GRAVITY_RANGE = 180;
+        const PLANET_GRAVITY_FACTOR = 100; // 重力は残すが、ブロックには引力は設定しない（簡略化）
         const CONTROL_FORCE = 0.5;
-        const MAX_SPEED = 10;
-        
-        // 発射設定
-        const LAUNCH_POS_X = CANVAS_WIDTH / 2;
-        const LAUNCH_POS_Y = CANVAS_HEIGHT - 50; 
         const INITIAL_VELOCITY_Y = -15; 
-        const LAUNCH_INTERVAL = 100; // 🚨 修正: 0.1秒（100ミリ秒）ごとに自動発射
+        const LAUNCH_INTERVAL = 100; 
 
+        // ブロック設定
+        const BLOCK_ROWS = 10; // 🚨 大量のブロック
+        const BLOCK_COLS = 16;
+        const BLOCK_WIDTH = CANVAS_WIDTH / BLOCK_COLS;
+        const BLOCK_HEIGHT = 20;
+        const BLOCK_START_Y = 50; 
+        
         // ゲームの状態
         let score = 0;
-        let gameActive = false; 
-        let planets = [];
+        let gameState = 'HOME'; // HOME, PLAYING, RANKING
+        let blocks = [];
         let balls = [];
         let launchTimer;
         
-        let currentStage = 1; // 🚨 ステージ管理
-        let gameStartTime = 0; // 🚨 タイムアタック用開始時刻
-        let stageClearTimes = {}; // 🚨 ステージごとのクリアタイム
+        let currentStage = 1;
+        let gameStartTime = 0;
+        let stageClearTimes = {};
         let keys = { ArrowLeft: false, ArrowRight: false };
 
         canvas.width = CANVAS_WIDTH;
         canvas.height = CANVAS_HEIGHT;
 
-        // --- クラス定義 (Planet と Ball は前バージョンと同じため割愛) ---
-        class Planet {
-            constructor(x, y, color) {
+        // --- ブロックのクラス (HPシステム導入) ---
+        class Block {
+            constructor(x, y, color, health) {
                 this.x = x; 
                 this.y = y; 
-                this.radius = 30; 
+                this.width = BLOCK_WIDTH;
+                this.height = BLOCK_HEIGHT; 
                 this.color = color;
-                this.health = 3;
-                this.scoreValue = 100;
+                this.health = health; // HPとして機能
+                this.maxHealth = health;
             }
             draw() {
-                ctx.strokeStyle = `rgba(150, 150, 255, 0.15)`;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, GRAVITY_RANGE, 0, Math.PI * 2);
-                ctx.stroke();
+                // HPに基づく色の変化（削られていく表現）
+                let alpha = this.health / this.maxHealth;
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                
+                // 元の色をベースに
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+                ctx.strokeStyle = '#222'; 
+                ctx.lineWidth = 1;
+                ctx.strokeRect(this.x, this.y, this.width, this.height);
 
-                ctx.fillStyle = this.color;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                ctx.fill();
-
-                ctx.fillStyle = 'white';
-                ctx.font = '16px sans-serif';
+                // HPの数値を描画
+                ctx.fillStyle = '#000';
+                ctx.font = '12px sans-serif';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.fillText(this.health, this.x, this.y);
+                ctx.fillText(this.health, this.x + this.width / 2, this.y + this.height / 2);
             }
         }
-
+        
+        // --- ボールのクラス (制御系は前バージョンを踏襲) ---
         class Ball {
             constructor(startX, startY, initialVY) {
                 this.x = startX;
@@ -163,22 +243,12 @@
                     if (keys.ArrowRight) this.vx += CONTROL_FORCE;
                 }
                 
-                planets.forEach(planet => {
-                    const dx = planet.x - this.x;
-                    const dy = planet.y - this.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-                    const safeDistance = Math.max(distance, planet.radius);
-                    
-                    if (distance < GRAVITY_RANGE) {
-                        const force = PLANET_GRAVITY_FACTOR / (safeDistance * safeDistance);
-                        const angle = Math.atan2(dy, dx);
-                        
-                        this.vx += Math.cos(angle) * force;
-                        this.vy += Math.sin(angle) * force;
-                    }
-                });
+                // ブロックブラストでは引力は無視 (惑星システムから変更)
+                // this.vy += 0.1; // 重力は残しても良いが、ここではシンプルに無視
                 
+                // 速度制限
                 const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                const MAX_SPEED = 15; // 速度を少し上げる
                 if (currentSpeed > MAX_SPEED) {
                     this.vx = (this.vx / currentSpeed) * MAX_SPEED;
                     this.vy = (this.vy / currentSpeed) * MAX_SPEED;
@@ -187,231 +257,243 @@
 
             update() {
                 if (!this.isLaunched) return;
-                
                 this.applyForces();
-
                 this.x += this.vx;
                 this.y += this.vy;
                 
-                if (this.x < 0 || this.x > CANVAS_WIDTH || this.y < 0 || this.y > CANVAS_HEIGHT) {
+                // 画面端での反射
+                if (this.x - this.radius < 0 || this.x + this.radius > CANVAS_WIDTH) {
+                    this.vx *= -1;
+                    this.x = Math.max(this.radius, Math.min(this.x, CANVAS_WIDTH - this.radius));
+                }
+                if (this.y - this.radius < 0) {
+                    this.vy *= -1;
+                    this.y = this.radius;
+                }
+                
+                // 画面下端 (ミス)
+                if (this.y + this.radius > CANVAS_HEIGHT) {
                     this.isLaunched = false;
                 }
             }
             
             draw() {
-                ctx.strokeStyle = this.color;
-                ctx.lineWidth = 3;
+                ctx.fillStyle = this.color;
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                ctx.stroke();
-
-                ctx.fillStyle = 'white';
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
                 ctx.fill();
             }
         }
 
-        // --- ステージレイアウトの定義 ---
-        function getStageLayout(stage) {
-            const colors = ['#FF4500', '#DAA520', '#4169E1', '#32CD32', '#9370DB', '#FFD700'];
-            
-            switch (stage) {
-                case 1:
-                    return [
-                        {x: 200, y: 150, health: 3, color: colors[0]},
-                        {x: 400, y: 100, health: 3, color: colors[1]},
-                        {x: 600, y: 150, health: 3, color: colors[2]},
-                        {x: 300, y: 280, health: 4, color: colors[3]},
-                        {x: 500, y: 280, health: 4, color: colors[4]},
-                    ];
-                case 2:
-                    return [
-                        {x: 150, y: 100, health: 3, color: colors[0]},
-                        {x: 650, y: 100, health: 3, color: colors[1]},
-                        {x: 400, y: 180, health: 5, color: colors[5]}, 
-                        {x: 250, y: 300, health: 4, color: colors[2]},
-                        {x: 550, y: 300, health: 4, color: colors[3]},
-                        {x: 400, y: 400, health: 3, color: colors[4]},
-                    ];
-                case 3:
-                    return [
-                        {x: 150, y: 100, health: 5, color: colors[0]},
-                        {x: 210, y: 150, health: 5, color: colors[1]},
-                        {x: 270, y: 200, health: 5, color: colors[2]},
-                        
-                        {x: 650, y: 100, health: 6, color: colors[3]},
-                        {x: 590, y: 150, health: 6, color: colors[4]},
+        // --- ステージレイアウト ---
+        function initializeBlocks(stage) {
+            blocks = [];
+            let totalHealth = 0;
+            let blockHealth;
 
-                        {x: 400, y: 350, health: 7, color: colors[5]}, 
-                    ];
-                default:
-                    return [];
+            for (let r = 0; r < BLOCK_ROWS; r++) {
+                for (let c = 0; c < BLOCK_COLS; c++) {
+                    const blockX = c * BLOCK_WIDTH;
+                    const blockY = r * BLOCK_HEIGHT + BLOCK_START_Y;
+
+                    // ステージごとにHP設定を変更
+                    if (stage === 1) {
+                        blockHealth = Math.floor(Math.random() * 3) + 1; // 1～3
+                    } else if (stage === 2) {
+                        blockHealth = Math.floor(Math.random() * 5) + 3; // 3～7
+                    } else if (stage === 3) {
+                        blockHealth = Math.floor(Math.random() * 7) + 5; // 5～11
+                    }
+                    
+                    if (blockHealth > 0) {
+                        blocks.push(new Block(blockX, blockY, '#FFF', blockHealth));
+                        totalHealth += blockHealth;
+                    }
+                }
             }
-        }
-        
-        function initializePlanets(stage) {
-            planets = [];
-            const layout = getStageLayout(stage);
-            
-            layout.forEach(data => {
-                const planet = new Planet(data.x, data.y, data.color);
-                planet.health = data.health;
-                planets.push(planet);
-            });
         }
         
         function checkCollisions() {
             balls = balls.filter(ball => ball.isLaunched);
 
             balls.forEach(ball => {
-                // 発射後、発射台を離れたら制御可能にする
                 if (ball.y < LAUNCH_POS_Y - 5) {
                     ball.isControlled = true;
                 }
                 
-                for (let i = planets.length - 1; i >= 0; i--) {
-                    const planet = planets[i];
+                for (let i = blocks.length - 1; i >= 0; i--) {
+                    const block = blocks[i];
 
-                    const dx = ball.x - planet.x;
-                    const dy = ball.y - planet.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    const closestX = Math.max(block.x, Math.min(ball.x, block.x + block.width));
+                    const closestY = Math.max(block.y, Math.min(ball.y, block.y + block.height));
                     
-                    if (distance < ball.radius + planet.radius) {
+                    const distanceX = ball.x - closestX;
+                    const distanceY = ball.y - closestY;
+                    
+                    if ((distanceX * distanceX + distanceY * distanceY) < (ball.radius * ball.radius)) {
                         // 衝突！
                         
-                        planet.health--;
-                        score += planet.scoreValue;
-                        scoreElement.textContent = score;
-                        
-                        // 惑星の破壊
-                        if (planet.health <= 0) {
-                            planets.splice(i, 1);
+                        // 速度の反転 (ブロックに当たるため、速度が反転する)
+                        const penetrationDepthX = ball.radius - Math.abs(distanceX);
+                        const penetrationDepthY = ball.radius - Math.abs(distanceY);
+
+                        if (penetrationDepthX > penetrationDepthY) {
+                            // 上下衝突
+                            ball.vy *= -1;
+                        } else {
+                            // 左右衝突
+                            ball.vx *= -1;
                         }
                         
-                        // 衝突したボールは消滅
-                        ball.isLaunched = false;
+                        // HPを削る
+                        block.health--;
+                        score += 10;
+                        scoreElement.textContent = score;
+
+                        // ブロック破壊
+                        if (block.health <= 0) {
+                            blocks.splice(i, 1);
+                        }
                         
-                        // 勝利判定/ステージクリア判定
-                        if (planets.length === 0) {
-                            // 🚨 ステージクリア時の処理
+                        // ステージクリア判定
+                        if (blocks.length === 0) {
                             stageClearTimes[currentStage] = (Date.now() - gameStartTime) / 1000;
                             
                             if (currentStage < 3) {
-                                // 次のステージへ
                                 currentStage++;
                                 balls = [];
-                                initializePlanets(currentStage);
+                                initializeBlocks(currentStage);
                                 stageNumElement.textContent = `${currentStage}/3`;
-                                // タイマーは継続
                             } else {
-                                // 最終ステージクリア！
                                 endGame(true);
                                 return;
                             }
                         }
+                        
+                        // 1つのブロックに当たったら、次のブロックのチェックをスキップ（速度最適化）
+                        break; 
                     }
                 }
             });
         }
         
         function launchBall() {
-            if (!gameActive) return;
+            if (gameState !== 'PLAYING') return;
             
-            // 画面上に玉が5個未満の場合のみ発射（画面の混雑を防ぐ）
-            if (balls.filter(b => b.isLaunched).length < 5) { 
+            // 画面上のボールが10個未満の場合のみ発射 (多すぎると重くなるため)
+            if (balls.filter(b => b.isLaunched).length < 10) { 
                 const newBall = new Ball(LAUNCH_POS_X, LAUNCH_POS_Y, INITIAL_VELOCITY_Y);
                 balls.push(newBall);
             }
         }
 
 
-        // --- メインループとゲーム制御 ---
+        // --- UI / ランキング処理 ---
+
+        const RANKING_KEY = 'BlockBlastRanking';
+
+        function loadRanking() {
+            const json = localStorage.getItem(RANKING_KEY);
+            return json ? JSON.parse(json) : [];
+        }
+
+        function saveRanking(totalTime) {
+            let rankings = loadRanking();
+            
+            // 🚨 新しい記録を追加
+            rankings.push(totalTime);
+            
+            // 🚨 昇順（タイムが短い順）にソート
+            rankings.sort((a, b) => a - b); 
+            
+            // 🚨 トップ10のみ保持
+            rankings = rankings.slice(0, 10);
+            
+            localStorage.setItem(RANKING_KEY, JSON.stringify(rankings));
+        }
+
+        function displayRanking() {
+            const rankings = loadRanking();
+            rankingList.innerHTML = ''; // リストをクリア
+            
+            if (rankings.length === 0) {
+                rankingList.innerHTML = '<li>まだ記録がありません。</li>';
+                return;
+            }
+
+            rankings.forEach((time, index) => {
+                const li = document.createElement('li');
+                li.innerHTML = `<span>${index + 1}.</span> <span>${time.toFixed(2)}秒</span>`;
+                rankingList.appendChild(li);
+            });
+        }
+
+        function setScreen(screen) {
+            uiOverlay.style.display = 'flex';
+            homeScreen.style.display = 'none';
+            rankScreen.style.display = 'none';
+            gameInfo.style.display = 'none';
+            gameState = screen;
+
+            if (screen === 'HOME') {
+                homeScreen.style.display = 'block';
+            } else if (screen === 'RANKING') {
+                rankScreen.style.display = 'block';
+                displayRanking(); // ランキング表示を更新
+            } else if (screen === 'PLAYING') {
+                uiOverlay.style.display = 'none';
+                gameInfo.style.display = 'flex';
+            }
+        }
+
+        // --- ゲームループと制御 ---
         let animationFrameId = null;
 
         function animate() {
             ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
             
-            // 🚨 タイマー更新
-            if (gameActive) {
+            if (gameState === 'PLAYING') {
                 const elapsed = Date.now() - gameStartTime;
                 timeDisplayElement.textContent = (elapsed / 1000).toFixed(2);
+                
+                // 発射台の描画
+                ctx.fillStyle = '#9370DB'; 
+                ctx.beginPath();
+                ctx.arc(LAUNCH_POS_X, LAUNCH_POS_Y, 20, 0, Math.PI * 2);
+                ctx.fill();
+                
+                blocks.forEach(block => block.draw());
+                balls.forEach(ball => {
+                    if(ball.isLaunched) {
+                        ball.update();
+                        ball.draw();
+                    }
+                });
+                checkCollisions();
             }
 
-            // 発射台の描画
-            ctx.fillStyle = '#9370DB'; 
-            ctx.beginPath();
-            ctx.arc(LAUNCH_POS_X, LAUNCH_POS_Y, 20, 0, Math.PI * 2);
-            ctx.fill();
-            
-            planets.forEach(planet => planet.draw());
-            balls.forEach(ball => {
-                if(ball.isLaunched) {
-                    ball.update();
-                    ball.draw();
-                }
-            });
-            checkCollisions();
-            
-            if (gameActive) {
-                animationFrameId = requestAnimationFrame(animate);
-            } else {
-                drawStartScreen(planets.length === 0);
-            }
+            animationFrameId = requestAnimationFrame(animate);
         }
         
-        function drawStartScreen(win = false) {
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-            
-            ctx.fillStyle = 'white';
-            ctx.font = '40px "Comic Sans MS", sans-serif'; 
-            ctx.textAlign = 'center';
-            
-            if (win) {
-                // 🚨 最終結果表示
-                let totalTime = 0;
-                let resultText = "";
-                for (let i = 1; i <= 3; i++) {
-                    const time = stageClearTimes[i] || 0;
-                    totalTime += time;
-                    resultText += `S${i}: ${time.toFixed(2)}秒 / `;
-                }
-                
-                ctx.fillText(`🚀 完全勝利！ 🌟`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 100);
-                ctx.font = '30px "Comic Sans MS", sans-serif';
-                ctx.fillText(`合計タイム: ${totalTime.toFixed(2)}秒`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 30);
-                ctx.font = '18px "Comic Sans MS", sans-serif';
-                ctx.fillText(resultText, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 20);
-                
-                ctx.font = '24px "Comic Sans MS", sans-serif';
-                ctx.fillText(`Enterキーで再挑戦！`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 80);
-            } else {
-                ctx.fillText(`🎮 プラネット・コントロール 🎮`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 60);
-                ctx.font = '24px "Comic Sans MS", sans-serif';
-                ctx.fillText(`時間勝負！ステージ1から3をクリアせよ！`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
-                ctx.fillText(`Enterキーでゲームスタート！`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 50);
-            }
-        }
-
         function startGame() {
-            if (gameActive) return;
+            if (gameState === 'PLAYING') return;
             score = 0;
             currentStage = 1;
             stageClearTimes = {};
-            gameActive = true;
             
-            // 🚨 タイマーとステージの初期化
+            // 🚨 ゲーム状態をPLAYINGに設定
+            setScreen('PLAYING');
+
             gameStartTime = Date.now(); 
             stageNumElement.textContent = `${currentStage}/3`;
             timeDisplayElement.textContent = '0.00';
 
-            initializePlanets(currentStage);
+            initializeBlocks(currentStage);
             balls = [];
             scoreElement.textContent = score;
             
             clearInterval(launchTimer);
-            launchTimer = setInterval(launchBall, LAUNCH_INTERVAL); // 自動発射開始
+            launchTimer = setInterval(launchBall, LAUNCH_INTERVAL); 
 
             if (!animationFrameId) {
                 animate();
@@ -419,28 +501,54 @@
         }
         
         function endGame(win = false) {
-            gameActive = false;
             clearInterval(launchTimer);
-            drawStartScreen(win);
+            
+            if (win) {
+                let totalTime = 0;
+                for (let i = 1; i <= 3; i++) {
+                    totalTime += stageClearTimes[i] || 0;
+                }
+                
+                // 🚨 ランキングを保存
+                saveRanking(totalTime);
+
+                // 勝利メッセージ
+                alert(`🚀 全ステージクリア！合計タイム: ${totalTime.toFixed(2)}秒でランキングに登録されました！`);
+            } else {
+                alert(`ゲームオーバー... スコア: ${score}点`);
+            }
+            
+            setScreen('HOME'); // ホーム画面に戻る
         }
 
         // --- イベントリスナー ---
+        document.getElementById('start-button').addEventListener('click', startGame);
+        document.getElementById('rank-button').addEventListener('click', () => setScreen('RANKING'));
+        document.getElementById('back-button').addEventListener('click', () => setScreen('HOME'));
+        
+        // ホーム画面でEnterキーを押してもスタート
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && gameState === 'HOME') {
+                startGame();
+            }
+        });
+
+        // 矢印キー制御
         document.addEventListener('keydown', (e) => {
             if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-                if (gameActive) keys[e.code] = true;
+                if (gameState === 'PLAYING') keys[e.code] = true;
                 e.preventDefault(); 
-            } else if (e.key === 'Enter' && !gameActive) {
-                startGame();
             }
         });
 
         document.addEventListener('keyup', (e) => {
             if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-                if (gameActive) keys[e.code] = false;
+                if (gameState === 'PLAYING') keys[e.code] = false;
             }
         });
 
-        initializePlanets(1);
+        // 初期表示
+        setScreen('HOME');
         animate(); 
     });
 </script>
