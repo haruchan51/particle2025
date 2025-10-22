@@ -114,15 +114,53 @@
             font-size: 24px;
         }
 
-        /* クイズ画面 (微修正) */
+        /* クイズ画面 */
         #quiz-screen {
+            display: none;
+            text-align: center;
+            width: 70%;
             background: #1A1A1A;
-            border: 2px solid #39FF14;
+            padding: 30px;
+            border-radius: 15px;
             box-shadow: 0 0 15px rgba(57, 255, 20, 0.5);
+            border: 2px solid #39FF14;
         }
         #quiz-question {
+            font-size: 24px;
+            margin-bottom: 20px;
             color: #FF00AA;
             text-shadow: 0 0 5px #FF00AA;
+        }
+        .quiz-option {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            font-size: 18px;
+            font-weight: bold;
+            color: #0A0A0A;
+            background-color: #00FFFF;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.1s;
+        }
+        .result-text.correct {
+            color: #39FF14;
+            font-size: 22px;
+            font-weight: bold;
+            text-shadow: 0 0 10px #39FF14;
+        }
+        .result-text.incorrect {
+            color: #FF3131;
+            font-size: 22px;
+            font-weight: bold;
+            text-shadow: 0 0 10px #FF3131;
+        }
+
+        /* ホーム/終了画面 */
+        #home-screen, #end-screen {
+             text-align: center;
+             display: none;
         }
 
     </style>
@@ -318,7 +356,7 @@
             }
             
             applyForces() {
-                // 制御可能な間は、発射台に追従するのではなく、プレイヤーの操作（矢印キー）を受け付ける
+                // 制御可能な間は、プレイヤーの操作（矢印キー）を受け付ける
                 if (this.isControlled) {
                     if (keys.ArrowLeft)  this.vx -= CONTROL_FORCE;
                     if (keys.ArrowRight) this.vx += CONTROL_FORCE;
@@ -384,7 +422,7 @@
             }
         }
         
-        // 🚨 修正: 発射台の自動移動ロジック
+        // 🚨 修正後の発射台の自動移動ロジック
         function updatePaddlePosition() {
             if (gameState !== 'PLAYING') return;
 
@@ -392,7 +430,7 @@
             
             // 移動範囲の境界チェック (中心からPADDLE_MOVEMENT_RANGEの範囲)
             const minX = PADDLE_CENTER_X - PADDLE_MOVEMENT_RANGE + currentPaddleWidth;
-            const maxX = PADDLE_CENTER_X + PADDLE_MOVEMENT_RANGE - currentPaddleWidth; // 🚨 バグ修正: PADDER_CENTER_X -> PADDLE_CENTER_X
+            const maxX = PADDLE_CENTER_X + PADDLE_MOVEMENT_RANGE - currentPaddleWidth; 
 
             if (paddleX - currentPaddleWidth < minX || paddleX + currentPaddleWidth > maxX) {
                 paddleVx *= -1; 
