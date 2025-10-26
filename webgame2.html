@@ -178,6 +178,7 @@
     <canvas id="blockBlastCanvas"></canvas>
 
     <div id="ui-overlay">
+        <!-- 🏆 ホーム画面 🏆 -->
         <div id="home-screen">
             <div class="title">BLOCK BLAST ATTACK</div>
             <button class="menu-button" id="start-game-button">START GAME</button>
@@ -185,6 +186,7 @@
             <ol id="home-ranking-list"></ol>
         </div>
 
+        <!-- ❓ クイズ画面 ❓ -->
         <div id="quiz-screen">
             <h2>ステージ <span id="quiz-stage-num">1</span> クイズチャレンジ!</h2>
             <p id="quiz-question"></p>
@@ -193,6 +195,7 @@
             <button id="continue-button" class="menu-button" style="display: none; background-color: #FF00AA; color: white; box-shadow: 0 0 15px #FF00AA, 0 4px #D0008D;">ゲーム再開</button>
         </div>
 
+        <!-- 🏁 ゲーム終了画面 🏁 -->
         <div id="end-screen">
              <div class="title" id="end-title"></div>
              <h3>あなたの記録</h3>
@@ -232,7 +235,7 @@
         const BALL_RADIUS = 10;
         const PADDLE_SPEED = 10; 
         let INITIAL_VELOCITY_Y = -15; 
-        const LAUNCH_INTERVAL = 10; // 🚀 修正: 0.01秒 (10ミリ秒)間隔で発射
+        const LAUNCH_INTERVAL = 10; // 0.01秒間隔で発射
         const DEFAULT_PADDLE_WIDTH = 40;
         
         // ブロック設定
@@ -262,7 +265,9 @@
         // --- 特典管理 ---
         let ballSpeedMultiplier = 1.0; 
         let isPenetrating = false; 
-        let isInvincibleWallActive = false; // 🚀 追加: 消えないレンガの状態
+        let isInvincibleWallActive = false;
+        let invincibleWallBricks = []; // 消えないレンガの配列
+        const WALL_DURATION = 10000; // 10秒
 
         canvas.width = CANVAS_WIDTH;
         canvas.height = CANVAS_HEIGHT;
@@ -413,7 +418,6 @@
             }
         }
         
-        // 🚀 修正: 発射台の手動移動ロジック
         function updatePaddlePosition() {
             if (gameState !== 'PLAYING') return;
 
@@ -429,21 +433,46 @@
             const maxX = CANVAS_WIDTH - currentPaddleWidth;
             
             paddleX = Math.max(minX, Math.min(paddleX, maxX));
-
-            // 🚀 修正: 玉が発射され続けるため、ボールの追従ロジックは不要
         }
 
+        /**
+         * ランダムな位置・サイズの消えないレンガを生成する
+         */
+        function generateInvincibleWallBricks() {
+            invincibleWallBricks = [];
+            const BRICK_COUNT = 12; // 10個以上
+            // ブロックの下端からパドルの上端までの範囲
+            const MIN_Y = BLOCK_START_Y + (BLOCK_ROWS * BLOCK_HEIGHT) + 50; 
+            const MAX_Y = LAUNCH_POS_Y - 100; 
+
+            for (let i = 0; i < BRICK_COUNT; i++) {
+                const width = 30 + Math.random() * 80; // 幅 30px ~ 110px
+                const height = 10 + Math.random() * 20; // 高さ 10px ~ 30px
+                const x = Math.random() * (CANVAS_WIDTH - width);
+                const y = MIN_Y + Math.random() * (MAX_Y - MIN_Y);
+
+                invincibleWallBricks.push({ x, y, width, height });
+            }
+        }
+
+        /**
+         * 消えないレンガの描画（ランダムなレンガを描画）
+         */
         function drawInvincibleWall() {
-             // 🚀 追加: 消えないレンガの描画
             if (!isInvincibleWallActive) return;
             
-            const WALL_Y = LAUNCH_POS_Y - 100; // パドルより少し上
-            const WALL_HEIGHT = 10;
-            
-            ctx.fillStyle = 'rgba(255, 0, 0, 0.5)'; // 透明感のある赤
             ctx.shadowColor = '#FF0000';
             ctx.shadowBlur = 10;
-            ctx.fillRect(0, WALL_Y, CANVAS_WIDTH, WALL_HEIGHT);
+            
+            invincibleWallBricks.forEach(brick => {
+                ctx.fillStyle = 'rgba(255, 0, 0, 0.6)'; // 透明感のある赤
+                ctx.fillRect(brick.x, brick.y, brick.width, brick.height);
+                
+                ctx.strokeStyle = '#FF3131';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(brick.x, brick.y, brick.width, brick.height);
+            });
+            
             ctx.shadowBlur = 0; 
         }
 
@@ -452,14 +481,28 @@
 
             balls.forEach(ball => {
                 
-                // 🚀 追加: 消えないレンガとの衝突判定
+                // 消えないレンガとの衝突判定 (配列をループ)
                 if (isInvincibleWallActive) {
-                    const WALL_Y = LAUNCH_POS_Y - 100;
-                    const WALL_HEIGHT = 10;
-                    
-                    if (ball.vy > 0 && ball.y + ball.radius > WALL_Y && ball.y - ball.radius < WALL_Y + WALL_HEIGHT) {
-                        ball.vy *= -1;
-                        ball.y = WALL_Y - ball.radius; // 壁から押し戻す
+                    for (const brick of invincibleWallBricks) {
+                        const closestX = Math.max(brick.x, Math.min(ball.x, brick.x + brick.width));
+                        const closestY = Math.max(brick.y, Math.min(ball.y, brick.y + brick.height));
+                        
+                        const distanceX = ball.x - closestX;
+                        const distanceY = ball.y - closestY;
+                        
+                        if ((distanceX * distanceX + distanceY * distanceY) < (ball.radius * ball.radius)) {
+                             // 速度の反転 (ブロックと同じ衝突判定ロジック)
+                            const penetrationDepthX = ball.radius - Math.abs(distanceX);
+                            const penetrationDepthY = ball.radius - Math.abs(distanceY);
+    
+                            if (penetrationDepthX > penetrationDepthY) {
+                                ball.vy *= -1;
+                            } else {
+                                ball.vx *= -1;
+                            }
+                            
+                            break; // 1つのレンガに当たったら次のボールへ
+                        }
                     }
                 }
 
@@ -475,7 +518,6 @@
                     
                     if ((distanceX * distanceX + distanceY * distanceY) < (ball.radius * ball.radius)) {
                         
-                        // 最初のブロックに当たった瞬間、ボールの制御を無効化
                         ball.isControlled = false;
 
                         // 速度の反転 (貫通弾の場合は反転しない)
@@ -524,15 +566,12 @@
                     // パドル上部からの衝突
                     if (ball.vy > 0 && ball.x + ball.radius > paddleLeft && ball.x - ball.radius < paddleRight) {
                         
-                        // 球の中心がパドルのY位置より上にある場合にのみ反射させる (パドルの円形部分)
                         if (ball.y < PADDLE_Y) {
                             ball.vy *= -1;
                             
-                            // 反射角をパドルに当たった位置に応じて調整
                             const hitPoint = (ball.x - paddleX) / currentPaddleWidth;
                             ball.vx = hitPoint * 10; 
 
-                            // パドルに当たったらボール制御を再有効化
                             ball.isControlled = true;
                         }
                     }
@@ -541,13 +580,12 @@
             
             // ライフ判定（発射台で受け止められなかった場合）
             if (balls.length > 0 && balls.filter(b => b.isLaunched).length === 0) {
-                // 🚀 修正: 発射台で受け止められず、かつインビジブルウォールがない場合のみゲームオーバー
+                // インビジブルウォールがない場合のみゲームオーバー
                 if (!isInvincibleWallActive) {
                    endGame(false);
                 } else {
-                   // インビジブルウォールがある場合は、ボールをリセットして再発射
+                   // インビジブルウォールがある場合は、ボールをリセットして次の発射を待つ (高速連射なので即座に新しい玉が出る)
                    balls = []; 
-                   launchBall(); // すぐに新しい玉を発射させる
                 }
             }
         }
@@ -555,7 +593,7 @@
         function launchBall() {
             if (gameState !== 'PLAYING') return;
             
-            // 🚀 修正: 発射台の位置から新しいボールを発射し続ける
+            // 発射台の位置から新しいボールを発射し続ける
             if (balls.filter(b => b.isLaunched).length < 20) { // 同時発射数を制限
                  const newBall = new Ball(paddleX, LAUNCH_POS_Y, INITIAL_VELOCITY_Y * ballSpeedMultiplier);
                 
@@ -641,7 +679,7 @@
 
             if (selectedAnswer === correctAnswer) {
                 applyQuizReward(true);
-                quizResultMessageElement.textContent = "🎉 正解！スピードブースト、貫通弾、そして**消えない壁**を獲得！";
+                quizResultMessageElement.textContent = "🎉 正解！スピードブースト、貫通弾、そして**ランダムな消えない壁**を獲得！";
                 quizResultMessageElement.className = "result-text correct";
             } else {
                 applyQuizReward(false);
@@ -654,28 +692,34 @@
         }
 
         function applyQuizReward(isCorrect) {
+            // 特典とデバフをリセット
             ballSpeedMultiplier = 1.0;
             isPenetrating = false;
             currentPaddleWidth = DEFAULT_PADDLE_WIDTH;
-            isInvincibleWallActive = false; // リセット
+            isInvincibleWallActive = false; 
+            invincibleWallBricks = []; 
 
             if (isCorrect) {
+                // 正解時：特典を有効化
                 ballSpeedMultiplier = 1.3; 
                 isPenetrating = true;
-                isInvincibleWallActive = true; // 🚀 追加: 壁を有効化
+                isInvincibleWallActive = true; 
+                generateInvincibleWallBricks(); // ランダムレンガを生成
                 
                 // 10秒後に全ての特典を無効化
                 setTimeout(() => {
                     ballSpeedMultiplier = 1.0;
                     isPenetrating = false;
                     isInvincibleWallActive = false;
-                }, 10000); 
+                    invincibleWallBricks = [];
+                }, WALL_DURATION); 
             } else {
+                // 不正解時：デバフを適用
                 currentPaddleWidth = DEFAULT_PADDLE_WIDTH / 2; 
 
                 setTimeout(() => {
                     currentPaddleWidth = DEFAULT_PADDLE_WIDTH;
-                }, 10000);
+                }, WALL_DURATION);
             }
         }
         
@@ -690,7 +734,7 @@
 
             gameState = 'PLAYING'; 
             
-            // 🚀 修正: 0.01秒間隔で発射し続けるタイマーをセット
+            // 0.01秒間隔で発射し続けるタイマーをセット
             clearInterval(launchTimer);
             launchTimer = setInterval(launchBall, LAUNCH_INTERVAL); 
         }
@@ -748,6 +792,7 @@
             ballSpeedMultiplier = 1.0;
             isPenetrating = false;
             isInvincibleWallActive = false; 
+            invincibleWallBricks = [];
             currentPaddleWidth = DEFAULT_PADDLE_WIDTH;
             paddleX = CANVAS_WIDTH / 2; // 中央から開始
 
@@ -803,7 +848,7 @@
                 ctx.arc(paddleX, LAUNCH_POS_Y, currentPaddleWidth, 0, Math.PI * 2); 
                 ctx.fill();
                 
-                drawInvincibleWall(); // 🚀 描画: 消えないレンガ
+                drawInvincibleWall(); // 描画: 消えないレンガ
                 blocks.forEach(block => block.draw());
                 balls.forEach(ball => {
                     if(ball.isLaunched) { 
