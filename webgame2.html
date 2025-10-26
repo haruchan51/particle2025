@@ -230,7 +230,8 @@
         const CANVAS_WIDTH = 800;
         const CANVAS_HEIGHT = 600;
         const BALL_RADIUS = 10;
-        const CONTROL_FORCE = 0.5;
+        // const CONTROL_FORCE = 0.5; // パドル操作に戻るため不要
+        const PADDLE_SPEED = 10; // 🚀 追加: パドルの移動速度
         let INITIAL_VELOCITY_Y = -15; 
         const LAUNCH_INTERVAL = 100; 
         const DEFAULT_PADDLE_WIDTH = 40;
@@ -243,11 +244,9 @@
         const BLOCK_START_Y = 50; 
         const LAUNCH_POS_Y = CANVAS_HEIGHT - 50; 
         
-        // --- パドル自動移動用の状態 ---
+        // --- パドルの状態 ---
         let paddleX = CANVAS_WIDTH / 2; // 発射台の中心X座標
-        let paddleVx = 3; // 発射台の速度
-        const PADDLE_MOVEMENT_RANGE = 200; // 発射台の移動範囲の半径
-        const PADDLE_CENTER_X = CANVAS_WIDTH / 2;
+        let currentPaddleWidth = DEFAULT_PADDLE_WIDTH; 
         
         // --- ゲームの状態 ---
         let score = 0;
@@ -259,17 +258,16 @@
         let currentStage = 1;
         let gameStartTime = 0;
         let stageClearTimes = {};
-        let keys = { ArrowLeft: false, ArrowRight: false };
+        let keys = { ArrowLeft: false, ArrowRight: false }; // 左右キーでパドルを操作する
 
         // --- 特典管理 ---
         let ballSpeedMultiplier = 1.0; 
         let isPenetrating = false; 
-        let currentPaddleWidth = DEFAULT_PADDLE_WIDTH; 
 
         canvas.width = CANVAS_WIDTH;
         canvas.height = CANVAS_HEIGHT;
 
-        // --- クイズデータ ---
+        // --- クイズデータ (変更なし) ---
         const QUIZ_DATA = [
             {
                 question: "2024年10月にノーベル化学賞を受賞した日本人科学者の名前は？",
@@ -303,7 +301,6 @@
             }
         ];
         
-        // --- クイズ履歴管理用のキー ---
         const USED_QUIZ_KEY = 'BlockBlastUsedQuizIndices';
 
 
@@ -342,7 +339,7 @@
             }
         }
         
-        // --- ボールのクラス (変更なし) ---
+        // --- ボールのクラス (制御無効化のロジックは残す) ---
         class Ball {
             constructor(startX, startY, initialVY) {
                 this.x = startX;
@@ -352,15 +349,11 @@
                 this.vx = 0;
                 this.vy = initialVY;
                 this.isLaunched = true;
-                this.isControlled = true; 
+                this.isControlled = true; // ボールがパドルに当たった後に制御無効化する機能は残す
             }
             
             applyForces() {
-                // 制御可能な間は、プレイヤーの操作（矢印キー）を受け付ける
-                if (this.isControlled) {
-                    if (keys.ArrowLeft)  this.vx -= CONTROL_FORCE;
-                    if (keys.ArrowRight) this.vx += CONTROL_FORCE;
-                }
+                // 🚀 修正: ボールへの微調整ロジックは削除（パドル操作に戻るため）
                 
                 const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
                 const MAX_SPEED = 15 * ballSpeedMultiplier; 
@@ -422,22 +415,29 @@
             }
         }
         
-        // 🚨 修正後の発射台の自動移動ロジック
+        // 🚀 修正: 発射台の手動移動ロジック
         function updatePaddlePosition() {
             if (gameState !== 'PLAYING') return;
 
-            paddleX += paddleVx;
-            
-            // 移動範囲の境界チェック (中心からPADDLE_MOVEMENT_RANGEの範囲)
-            const minX = PADDLE_CENTER_X - PADDLE_MOVEMENT_RANGE + currentPaddleWidth;
-            const maxX = PADDLE_CENTER_X + PADDLE_MOVEMENT_RANGE - currentPaddleWidth; 
-
-            if (paddleX - currentPaddleWidth < minX || paddleX + currentPaddleWidth > maxX) {
-                paddleVx *= -1; 
-                // 境界から外れないように調整
-                if (paddleX - currentPaddleWidth < minX) paddleX = minX + currentPaddleWidth;
-                if (paddleX + currentPaddleWidth > maxX) paddleX = maxX - currentPaddleWidth;
+            if (keys.ArrowLeft) {
+                paddleX -= PADDLE_SPEED;
             }
+            if (keys.ArrowRight) {
+                paddleX += PADDLE_SPEED;
+            }
+            
+            // 画面境界チェック
+            const minX = currentPaddleWidth;
+            const maxX = CANVAS_WIDTH - currentPaddleWidth;
+            
+            paddleX = Math.max(minX, Math.min(paddleX, maxX));
+
+            // 🚀 追記: 発射台が動いたら、発射前のボールも追従させる
+            balls.forEach(ball => {
+                if (ball.y > LAUNCH_POS_Y - 5) { // 画面下部にあるボール（まだ発射されていないとみなす）
+                    ball.x = paddleX;
+                }
+            });
         }
 
         function checkCollisions() {
@@ -445,7 +445,7 @@
 
             balls.forEach(ball => {
                 
-                // 衝突チェック
+                // 衝突チェック - ブロック
                 for (let i = blocks.length - 1; i >= 0; i--) {
                     const block = blocks[i];
 
@@ -457,7 +457,7 @@
                     
                     if ((distanceX * distanceX + distanceY * distanceY) < (ball.radius * ball.radius)) {
                         
-                        // 最初のブロックに当たった瞬間、制御を無効化
+                        // 最初のブロックに当たった瞬間、ボールの制御を無効化
                         ball.isControlled = false;
 
                         // 速度の反転 (貫通弾の場合は反転しない)
@@ -496,6 +496,26 @@
                         break; 
                     }
                 }
+
+                // 衝突チェック - パドル（発射台）
+                if (ball.y + ball.radius > LAUNCH_POS_Y - currentPaddleWidth) { // パドルのY位置
+                    const paddleLeft = paddleX - currentPaddleWidth;
+                    const paddleRight = paddleX + currentPaddleWidth;
+
+                    if (ball.x + ball.radius > paddleLeft && ball.x - ball.radius < paddleRight) {
+                        // パドル上部からの衝突
+                        if (ball.vy > 0 && ball.y + ball.radius < LAUNCH_POS_Y) {
+                            ball.vy *= -1;
+                            
+                            // 反射角をパドルに当たった位置に応じて調整
+                            const hitPoint = (ball.x - paddleX) / currentPaddleWidth;
+                            ball.vx = hitPoint * 10; // 大きく外側で当たると速度が増す
+
+                            // パドルに当たったらボール制御を再有効化
+                            ball.isControlled = true;
+                        }
+                    }
+                }
             });
             
             if (balls.length > 0 && balls.filter(b => b.isLaunched).length === 0) {
@@ -506,19 +526,13 @@
         function launchBall() {
             if (gameState !== 'PLAYING') return;
             
-            if (balls.filter(b => b.isLaunched).length < 10) { 
-                // ボールの初期位置を現在のpaddleXに合わせる
+            // 最初のボールをパドル中央から発射
+            if (balls.length === 0) { 
                 const newBall = new Ball(paddleX, LAUNCH_POS_Y, INITIAL_VELOCITY_Y * ballSpeedMultiplier);
-                if (isPenetrating) {
-                    newBall.color = '#FFD700'; 
-                    isPenetrating = false; 
-                } else {
-                    newBall.color = '#00FFFF'; 
-                }
                 balls.push(newBall);
             }
         }
-
+        
         // --- クイズ履歴管理機能 (変更なし) ---
         function loadUsedQuizIndices() {
             const json = localStorage.getItem(USED_QUIZ_KEY);
@@ -637,7 +651,8 @@
             gameState = 'PLAYING'; 
             
             clearInterval(launchTimer);
-            launchTimer = setInterval(launchBall, LAUNCH_INTERVAL); 
+            // 🚀 修正: launchBallをゲームループから呼び出し、自動発射はさせない
+            launchBall(); 
         }
 
         // --- UI / ランキング処理 (変更なし) ---
@@ -736,7 +751,7 @@
             ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
             
             if (gameState === 'PLAYING') {
-                updatePaddlePosition(); // パドルを自動で動かす
+                updatePaddlePosition(); // 🚀 修正: パドルを手動で動かす
 
                 const elapsed = Date.now() - gameStartTime;
                 timeDisplayElement.textContent = (elapsed / 1000).toFixed(2);
@@ -760,13 +775,13 @@
             animationFrameId = requestAnimationFrame(animate);
         }
         
-        // --- イベントリスナー (変更なし) ---
+        // --- イベントリスナー (キー操作をパドル操作に変更) ---
         document.getElementById('restart-button').addEventListener('click', showHome); 
         startGameButton.addEventListener('click', startGame);                       
         continueButton.addEventListener('click', continueGame);
         homeButton.addEventListener('click', showHome);                             
 
-        // 左右のキー操作はボールの微調整にのみ影響する
+        // 🚀 修正: 左右キーをパドルの移動に割り当てる
         document.addEventListener('keydown', (e) => {
             if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
                 if (gameState === 'PLAYING') keys[e.code] = true;
